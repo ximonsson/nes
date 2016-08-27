@@ -46,8 +46,8 @@ static uint8_t   primary_oam[64 * 4];
 static uint8_t   secondary_oam[8];
 
 /**
-*  PPU scrolling registers.
-*/
+ *  PPU scrolling registers.
+ */
 static uint16_t  t;
 static uint16_t  v;
 static uint8_t   x;
@@ -177,21 +177,21 @@ static void (*register_write_callbacks[8])(uint8_t) =
 };
 
 /**
-*  Write value to PPU register and call any callbacks associated
-*  to it.
-*/
+ * Write value to PPU register and call any callbacks associated
+ *  to it.
+ */
 void nes_ppu_register_write (nes_ppu_register reg, uint8_t value)
 {
 	uint8_t *ppustatus = ppu_registers + PPUSTATUS;
 	*ppustatus = (*ppustatus & 0xE0) | (value & 0x1F);
-	if (register_write_callbacks[reg])
+	if (*register_write_callbacks[reg])
 		(*register_write_callbacks[reg])(value);
 }
 
 
 /*
-*  READ PPU STATUS CALLBACKS -----------------------------------------------------------------
-*/
+ *  READ PPU REGISTERS CALLBACKS
+ */
 static uint8_t read_ppustatus ()
 {
 	uint8_t ret = ppu_registers[PPUSTATUS];
@@ -243,7 +243,7 @@ static uint8_t (*register_read_callbacks[8])() =
 */
 uint8_t nes_ppu_register_read (nes_ppu_register reg)
 {
-	if (register_read_callbacks[reg])
+	if (*register_read_callbacks[reg])
 		return (*register_read_callbacks[reg])();
 	else
 		return ppu_registers[reg];
