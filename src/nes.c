@@ -1,0 +1,204 @@
+#include "nes.h"
+#include "nes/cpu.h"
+#include "nes/ppu.h"
+#include "nes/io.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+
+#define INES_HEADER_SIZE 16
+
+/**
+*  Different status flags during run.
+*/
+enum status_flags
+{
+	PAUSE   = 0x01,
+	STOP    = 0x02
+};
+
+
+static void *prg_rom = 0;
+static void *chr_rom = 0;
+static int   flags   = STOP;
+
+
+/**
+*  Parse an iNES type ROM file.
+*/
+static int parse_ines_file (FILE *fp)
+{
+	unsigned char header[INES_HEADER_SIZE];
+	if (fread (header, 1, INES_HEADER_SIZE, fp) != INES_HEADER_SIZE)
+	{
+		fprintf (stderr, "did not get all bytes for ines header\n");
+		return 1;
+	}
+	printf ("%.3s\n", header);
+
+	int ret = 0;
+	int trainer_size = ((header[6] & 0x04) >> 2) * 512;
+	if (trainer_size)
+		fseek (fp, trainer_size, SEEK_CUR);
+
+	// Mapper ---------------------------------------------------------
+	int mapper = (header[6] & 0xF0) >> 4 | (header[7] & 0xF0);
+	// register mapper ...
+
+	// PPU mirroring --------------------------------------------------
+	int mirroring = HORIZONTAL;
+	switch (header[6] & 0x9)
+	{
+	case 0: // horizontal mirroring
+		mirroring = HORIZONTAL;
+		break;
+	case 1: // vertical mirroring
+		mirroring = VERTICAL;
+		break;
+	case 8: // four screen mirroring
+	case 9:
+		mirroring = FOUR_SCREEN;
+		break;
+	}
+	nes_ppu_set_mirroring_mode (mirroring);
+
+	// read PRG ROM --------------------------------------------------
+	int prg_rom_size = header[4] * 16 << 10;
+	prg_rom = calloc (prg_rom_size, 1);
+
+	if ((ret = fread (prg_rom, 1, prg_rom_size, fp)) != prg_rom_size)
+	{
+		fprintf (stderr, "did not get all bytes for PRG ROM\n");
+		fprintf (stderr, "expected %d, read %d\n", prg_rom_size, ret);
+		return 1;
+	}
+	// load PRG ROM data to memory
+	if (prg_rom_size <= NES_PRG_ROM_BANK_SIZE)
+	{
+		// if data is smaller than one bank we mirror the memory down.
+		nes_cpu_load_prg_rom_bank (prg_rom, 0);
+		nes_cpu_load_prg_rom_bank (prg_rom, 1);
+	}
+	else
+		nes_cpu_load_prg_rom (prg_rom);
+
+	// PRG RAM --------------------------------------------------
+	int prg_ram_size = header[8] == 0 ? 1 : header[8];
+
+	// CHR ROM --------------------------------------------------
+	int chr_rom_size = header[5] * 8 << 10;
+
+	if (chr_rom_size == 0)
+		chr_rom = malloc (0x2000); // ingen aning
+	else
+	{
+		chr_rom = malloc (chr_rom_size);
+		if ((ret = fread (chr_rom, 1, chr_rom_size, fp)) != chr_rom_size)
+		{
+			fprintf (stderr, "did not get all bytes for CHR ROM\n");
+			fprintf (stderr, "expected %d, read %d\n", chr_rom_size, ret);
+			return 1;
+		}
+		// load it to VRAM in PPU
+		nes_ppu_load_vram (chr_rom);
+	}
+
+	// VERBOSE
+	printf ("PRG ROM size: %.2d x 16KB (= %.2dKB)\n", header[4], header[4] * 16);
+	printf ("CHR ROM size: %.2d x  8KB (= %.2dKB)\n", header[5], header[5] * 8);
+	printf ("PRG RAM size: %.2d x  8KB\n", prg_ram_size);
+	printf ("Trainer: %.3d\n", trainer_size);
+	printf ("Mapper: %.3d\n", mapper);
+
+	if (chr_rom_size == 0)
+		printf ("CHR RAM is used instead of CHR ROM\n");
+
+	printf ("Mirroring: ");
+	switch (mirroring)
+	{
+		case HORIZONTAL:
+			printf ("HORIZONTAL\n"); break;
+		case VERTICAL:
+			printf ("VERTICAL\n"); break;
+		case FOUR_SCREEN:
+			printf ("FOUR_SCREEN\n"); break;
+	}
+
+	return 0;
+}
+
+/**
+*  Open a NES ROM file.
+*/
+static int open (const char *file)
+{
+	FILE *fp = fopen (file, "rb");
+	int ret = 0;
+	if (!fp)
+	{
+		ret = 1;
+		goto end;
+	}
+	ret = parse_ines_file (fp);
+	fclose (fp);
+	end:
+	return ret;
+}
+
+/**
+*  Run game in file.
+*/
+void nes_run (const char *file)
+{
+	flags = 0;
+	// init hardware
+	nes_cpu_init ();
+	nes_ppu_init ();
+	// open file and init
+	if (open (file) != 0)
+	{
+		fprintf (stderr, "error opening file\n");
+		return;
+	}
+	// run the game
+	nes_cpu_start ();
+
+	// cleanup
+	free (prg_rom);
+	free (chr_rom);
+	prg_rom = 0;
+}
+
+
+void nes_stop ()
+{
+	flags |= STOP;
+	nes_cpu_stop ();
+}
+
+
+void nes_pause ()
+{
+	if (flags & STOP)
+		return;
+	nes_cpu_pause ();
+	flags ^= PAUSE;
+}
+
+
+/**
+*  Register press event to player's controller.
+*/
+void nes_press_button (unsigned int player, enum controller_keys key)
+{
+	nes_io_press_key (player, key);
+}
+
+/**
+*  Register release event to player's controller.
+*/
+void nes_release_button (unsigned int player, enum controller_keys key)
+{
+	nes_io_release_key (player, key);
+}
