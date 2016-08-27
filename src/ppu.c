@@ -238,9 +238,9 @@ static uint8_t (*register_read_callbacks[8])() =
 };
 
 /**
-*  Read value from register.
-*  Calls the necessary callbacks associated to reads.
-*/
+ *  Read value from register.
+ *  Calls the necessary callbacks associated to reads.
+ */
 uint8_t nes_ppu_register_read (nes_ppu_register reg)
 {
 	if (*register_read_callbacks[reg])
@@ -300,8 +300,8 @@ void nes_ppu_set_mirroring_mode (nes_ppu_mirroring_mode _mirroring)
 }
 
 /**
-*  Get background color and pixel value at x and y on the screen.
-*/
+ *  Get background color and pixel value at x and y on the screen.
+ */
 static void background_color (int _x, int _y, uint8_t *pixel, uint8_t *color)
 {
 	uint8_t ppuctrl      = ppu_registers[PPUCTRL];
@@ -324,8 +324,8 @@ static void background_color (int _x, int _y, uint8_t *pixel, uint8_t *color)
 }
 
 /**
-*  Get sprite color and pixel value at x and y coordinates within the sprite.
-*/
+ *  Get sprite color and pixel value at x and y coordinates within the sprite.
+ */
 static void sprite_color (int sprite_index, int x, int y, uint8_t *pixel, uint8_t *color)
 {
 	int pattern;
@@ -347,10 +347,10 @@ static void sprite_color (int sprite_index, int x, int y, uint8_t *pixel, uint8_
 }
 
 /**
-*  Perform sprite evaluation for the current scanline.
-*  Loads into secondary OAM up to 8 sprites that are to be rendered.
-*  Also sets the sprite overflow flag in case more than 8 are found.
-*/
+ *  Perform sprite evaluation for the current scanline.
+ *  Loads into secondary OAM up to 8 sprites that are to be rendered.
+ *  Also sets the sprite overflow flag in case more than 8 are found.
+ */
 static void sprite_evaluation ()
 {
 	memset (secondary_oam, 0xFF, SECONDARY_OAM_SIZE);
@@ -388,8 +388,8 @@ static void sprite_evaluation ()
 }
 
 /**
-*  Increase current vertical scroll.
-*/
+ *  Increase current vertical scroll.
+ */
 static inline void increment_vertical_scroll ()
 {
 	if ((v & 0x7000) != 0x7000)
@@ -412,8 +412,8 @@ static inline void increment_vertical_scroll ()
 }
 
 /**
-*  Increase current horizontal scroll.
-*/
+ *  Increase current horizontal scroll.
+ */
 static inline void increment_horizontal_scroll ()
 {
 	if ((v & 0x1F) == 0x1F)
