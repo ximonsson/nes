@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 
 #define INES_HEADER_SIZE 16
@@ -165,19 +166,23 @@ void nes_run (const char *file)
 	nes_ppu_init ();
 
 	// run the game
-	// nes_cpu_start ();
+	// struct timespec timer;
+	// timer.tv_sec = 0;
 	int cc = 0;
 	while (~flags & STOP)
 	{
-		for (int n = 0; n < NES_CPU_FREQ;)
+		// perform CPU instruction
+		cc = nes_cpu_step ();
+		// render on PPU
+		for (int i = 0; i < cc * 3; i ++)
 		{
-			cc = nes_cpu_step ();
-			for (int i = 0; i < cc * 3; i ++)
-			{
-				nes_ppu_step ();
-			}
-			n += cc;
+			nes_ppu_step ();
 		}
+		// TODO render audio
+
+		// TODO emulate correct CPU frequency
+		// timer.tv_nsec = 559 * cc;
+		// nanosleep (&timer, NULL);
 	}
 
 	// cleanup
