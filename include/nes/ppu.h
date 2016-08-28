@@ -68,6 +68,9 @@ void nes_ppu_init ();
  */
 void nes_ppu_render (int pixels);
 
+/**
+ *  nes_ppu_step performs a cycle in the PPU.
+ */
 void nes_ppu_step () ;
 
 /**

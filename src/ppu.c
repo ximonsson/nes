@@ -120,6 +120,7 @@ static void write_ppuscroll (uint8_t value)
 	}
 	else
 	{
+		// TODO double check this one madafaka
 		t = (t & 0xC1F) | ((value & 7) << 12) | ((value & 0xC0) << 8) | ((value & 0x38) << 5);
 	}
 	flags ^= w;
@@ -129,12 +130,12 @@ static void write_ppuaddr (uint8_t value)
 {
 	if (~flags & w)
 	{
-		t = (t & 0x00FF) | ((value & 0x3F) << 8);
+		// t = (t & 0x00FF) | ((value & 0x3F) << 8);
+		t = (t & 0x80FF) | ((value & 0x3F) << 8);
 	}
 	else
 	{
 		v  = t = (t & 0xFF00) | value;
-		// v %= 0x4000;
 	}
 	flags ^= w;
 }
@@ -196,6 +197,7 @@ static uint8_t read_ppustatus ()
 {
 	uint8_t ret = ppu_registers[PPUSTATUS];
 	ppu_registers[PPUSTATUS] &= ~VBLANK;
+	// TODO might be some modification to NMI status here
 	flags &= ~w;
 	return ret;
 }
@@ -330,8 +332,7 @@ static void sprite_color (int sprite_index, int x, int y, uint8_t *pixel, uint8_
 {
 	int pattern;
 	uint8_t *sprite = primary_oam + sprite_index * 4;
-	// int      h      = SPRITE_HEIGHT + ((ppu_registers[PPUCTRL] & 0x20) >> 5) * SPRITE_HEIGHT;
-	int h = SPRITE_HEIGHT + (ppu_registers[PPUCTRL] & 0x20) ? SPRITE_HEIGHT : 0;
+	int h = SPRITE_HEIGHT + ((ppu_registers[PPUCTRL] & 0x20) ? SPRITE_HEIGHT : 0);
 
 	if (h == 8) // 8x8 mode
 		pattern = ((ppu_registers[PPUCTRL] & 0x08) >> 3) * 0x1000 + sprite[1] * 0x10;
@@ -392,22 +393,22 @@ static void sprite_evaluation ()
  */
 static inline void increment_vertical_scroll ()
 {
-	if ((v & 0x7000) != 0x7000)
-		v += 0x1000;
+	if ((v & 0x7000) != 0x7000) // fine Y < 7
+		v += 0x1000; // increment fine Y
 	else
 	{
-		v &= ~0x7000;
-		uint16_t y = (v & 0x03E0) >> 5;
+		v &= ~0x7000; // set fine Y = 0
+		uint16_t y = (v & 0x03E0) >> 5; // coarse Y
 		if (y == 29)
 		{
-			y  = 0;
-			v ^= 0x0800;
+			y  = 0;      // coarse Y = 0
+			v ^= 0x0800; // switch vertical nametable
 		}
 		else if (y == 31)
-			y = 0;
+			y = 0; // coarse Y = 0
 		else
-			y ++;
-		v = (v & ~0x03E0) | (y << 5);
+			y ++; // increment coarse Y
+		v = (v & ~0x03E0) | (y << 5); // insert coarse Y back into V
 	}
 }
 
@@ -416,33 +417,15 @@ static inline void increment_vertical_scroll ()
  */
 static inline void increment_horizontal_scroll ()
 {
-	if ((v & 0x1F) == 0x1F)
+	if ((v & 0x1F) == 0x1F) // coarse X = 31
 	{
-		v &= ~0x001F;
-		v ^=  0x0400;
+		v &= ~0x001F; // set coarse X = 0
+		v ^=  0x0400; // switch horizontal nametable
 	}
 	else
-		v ++;
+		v ++; // increment coarse X
 }
 
-static uint8_t palette[64][3] = {
-	{3,3,3}, {0,1,4}, {0,0,6}, {3,2,6},
-	{4,0,3}, {5,0,3}, {5,1,0}, {4,2,0},
-	{3,2,0}, {1,2,0}, {0,3,1}, {0,4,0},
-	{0,2,2}, {0,0,0}, {0,0,0}, {0,0,0},
-	{5,5,5}, {0,3,6}, {0,2,7}, {4,0,7},
-	{5,0,7}, {7,0,4}, {7,0,0}, {6,3,0},
-	{4,3,0}, {1,4,0}, {0,4,0}, {0,5,3},
-	{0,4,4}, {0,0,0}, {0,0,0}, {0,0,0},
-	{7,7,7}, {3,5,7}, {4,4,7}, {6,3,7},
-	{7,0,7}, {7,3,7}, {7,4,0}, {7,5,0},
-	{6,6,0}, {3,6,0}, {0,7,0}, {2,7,6},
-	{0,7,7}, {4,4,4}, {0,0,0}, {0,0,0},
-	{7,7,7}, {5,6,7}, {6,5,7}, {7,5,7},
-	{7,4,7}, {7,5,5}, {7,6,4}, {7,7,2},
-	{7,7,3}, {5,7,2}, {4,7,3}, {2,7,6},
-	{4,6,7}, {6,6,6}, {0,0,0}, {0,0,0}
-};
 
 /**
  * render renders the virtual screen to buffer.
@@ -452,78 +435,58 @@ static void render ()
 	memcpy (screen_buffer, screen, SCREEN_W * SCREEN_H * 3);
 }
 
+
 const uint8_t* nes_screen_buffer ()
 {
 	return screen_buffer;
 }
 
-static void set_pixel_color (int x, int y, uint8_t pindex)
+
+static void inline set_pixel_color (int x, int y, uint8_t pindex)
 {
-	// screen[y * SCREEN_W + x] = pindex;
+	static const uint8_t palette[64][3] = {
+		{3,3,3}, {0,1,4}, {0,0,6}, {3,2,6},
+		{4,0,3}, {5,0,3}, {5,1,0}, {4,2,0},
+		{3,2,0}, {1,2,0}, {0,3,1}, {0,4,0},
+		{0,2,2}, {0,0,0}, {0,0,0}, {0,0,0},
+		{5,5,5}, {0,3,6}, {0,2,7}, {4,0,7},
+		{5,0,7}, {7,0,4}, {7,0,0}, {6,3,0},
+		{4,3,0}, {1,4,0}, {0,4,0}, {0,5,3},
+		{0,4,4}, {0,0,0}, {0,0,0}, {0,0,0},
+		{7,7,7}, {3,5,7}, {4,4,7}, {6,3,7},
+		{7,0,7}, {7,3,7}, {7,4,0}, {7,5,0},
+		{6,6,0}, {3,6,0}, {0,7,0}, {2,7,6},
+		{0,7,7}, {4,4,4}, {0,0,0}, {0,0,0},
+		{7,7,7}, {5,6,7}, {6,5,7}, {7,5,7},
+		{7,4,7}, {7,5,5}, {7,6,4}, {7,7,2},
+		{7,7,3}, {5,7,2}, {4,7,3}, {2,7,6},
+		{4,6,7}, {6,6,6}, {0,0,0}, {0,0,0}
+	};
+
 	uint8_t* p = screen + (y * SCREEN_W + x) * 3;
 	memcpy (p, palette[pindex], 3);
 
-	float mod = 0xFF / 7;
+	static const float mod = 0xFF / 7;
 	for (int i = 0; i < 3; i ++)
 		*(p + i) *= mod;
 }
 
-void nes_ppu_step ()
+static void inline render_pixel (int x, int y)
 {
-	int x = ppucc % PPUCC_PER_SCANLINE;
-	int y = ppucc / PPUCC_PER_SCANLINE - BLANK_SCANLINES;
-	int rendering_enabled = (ppu_registers[PPUMASK] & 0x18) != 0;
-
-	// HBLANK or VBLANK
-	if (y < 0 || x >= SCREEN_W)
-	{
-		if (x == 0 && y == -BLANK_SCANLINES + 2)
-		{
-			ppu_registers[PPUSTATUS] |= VBLANK;
-			if (ppu_registers[PPUCTRL] & GENERATE_NMI)
-				nes_cpu_signal (NMI);
-		}
-		// increment v if rendering is enabled
-		else if (x == SCREEN_W && rendering_enabled)
-			increment_vertical_scroll ();
-
-		goto loop;
-	}
-
-	if (x == 0)
-	{
-		// start of visual screen
-		if (y == 0)
-		{
-			render ();
-			if (rendering_enabled)
-				v = t;
-			ppu_registers[PPUSTATUS] &= ~(VBLANK | SPRITE_ZERO_HIT);
-		}
-		else if (rendering_enabled)
-			v = (v & ~0x041F) | (t & 0x041F);
-
-		sprite_evaluation ();
-	}
-	// increment v horizontally
-	else if (x % 8 == 0 && rendering_enabled && y != 0)
-		increment_horizontal_scroll ();
-
-	// no point continuing the iteration from here if rendering is disabled
-	if (!rendering_enabled)
-		goto loop;
-
 	uint8_t bg_pixel = 0,
 	        sprite_pixel = 0,
 	        bg_color = 0,
 	        sprite_clr = 0;
+
+	// default palette index to background clear color
+	uint8_t palette_index = vram[0x3F00];
 
 	// background
 	if (!((ppu_registers[PPUMASK] & 0x08) == 0 || ((ppu_registers[PPUMASK] & 0x02) == 0 && y < 8 && x < 8)))
 	{
 		background_color (x, y, &bg_pixel, &bg_color);
 		if (bg_pixel != 0)
-			set_pixel_color (x, y, bg_color);
+			palette_index = bg_color;
 	}
 	// sprites
 	if (!((ppu_registers[PPUMASK] & 0x10) == 0 || ((ppu_registers[PPUMASK] & 0x4) == 0 && y < 8 && x < 8)))
@@ -549,32 +512,110 @@ void nes_ppu_step ()
 			x_off = x - sprite[3];
 			y_off = y - sprite[0];
 			sprite_color (j, x_off, y_off, &tmp, &sprite_clr);
-			// sprite found
 			if (tmp != 0)
 			{
+				// sprite found
 				if (bg_pixel != 0)
 				{
-					// sprite zero hit
-					if (j == 0)
+					if (j == 0) // sprite zero hit
 						ppu_registers[PPUSTATUS] |= SPRITE_ZERO_HIT;
-					// bg priority
-					if ((sprite[2] & 0x20) == 0x20)
+
+					if ((sprite[2] & 0x20) == 0x20) // bg priority
 						continue;
 				}
 				sprite_pixel = tmp;
-				set_pixel_color (x, y, sprite_clr);
+				palette_index = sprite_clr;
 			}
 		}
 	}
-	// copy backdrop color
-	if (bg_pixel == 0 && sprite_pixel == 0)
-		set_pixel_color (x, y, vram[0x3F00]);
-
-loop:
-	ppucc ++;
-	ppucc %= PPUCC_PER_FRAME;
+	// render color
+	set_pixel_color (x, y, palette_index);
 }
 
+
+void nes_ppu_step ()
+{
+	// TODO even/odd frame flag
+	//     if rendering is enabled: odd frames are one cycle shorter
+	//        => (339, 261) -> (0, 0). skip first idle tick of the first visible scanline
+
+	ppucc ++; // tick PPU
+	ppucc %= PPUCC_PER_FRAME;
+
+	int x = ppucc % PPUCC_PER_SCANLINE - 1;
+	int y = ppucc / PPUCC_PER_SCANLINE - BLANK_SCANLINES;
+	int rendering_enabled = (ppu_registers[PPUMASK] & 0x18) != 0;
+
+	// HBLANK or VBLANK
+	if (y < 0 || x >= SCREEN_W)
+	{
+		if (x == 0 && y == -BLANK_SCANLINES)
+		{
+			ppu_registers[PPUSTATUS] |= VBLANK; // set vblank
+			if (ppu_registers[PPUCTRL] & GENERATE_NMI)
+				nes_cpu_signal (NMI);
+		}
+		// increment v if rendering is enabled
+		else if (x == SCREEN_W && rendering_enabled && y >= 0)
+			increment_vertical_scroll ();
+
+		// goto loop;
+		return; // we are done for this cycle
+	}
+
+	if (x == 0)
+	{
+		// start of visual screen
+		if (y == 0)
+		{
+			ppu_registers[PPUSTATUS] &= ~(VBLANK | SPRITE_ZERO_HIT | SPRITE_OVERFLOW); // clear vblank and sprite #0 hit
+			if (rendering_enabled)
+				v = t; // copy t
+		}
+		else if (rendering_enabled)
+		{
+			v = (v & ~0x041F) | (t & 0x041F); // copy X
+			sprite_evaluation ();
+		}
+	}
+	// increment v horizontally
+	else if (x % 8 == 0 && rendering_enabled && y != 0)
+		increment_horizontal_scroll ();
+
+	// else if (x == SCREEN_W)
+	// {
+	// 	if (rendering_enabled && y >= 0)
+	// 		sprite_evaluation ();
+	// }
+
+	// compute pixel if rendering is enabled
+	if (rendering_enabled)
+		render_pixel (x, y);
+
+	if (x == SCREEN_W - 1 && y == SCREEN_H - 1)
+		render ();
+
+// loop:
+
+}
+
+
+void nes_ppu_step_2 ()
+{
+	// NMI delay
+
+	// next frame ?
+		// if show bg or show sprites
+			// if odd frame and scanline == 261 and x == 339
+
+	ppucc ++;
+
+	// next scanline ?
+		// if scanline > 261: next frame
+
+}
+
+// /*
 void nes_ppu_render (int pixels)
 {
 	uint8_t sprite_pixel, bg_pixel,
@@ -615,7 +656,7 @@ void nes_ppu_render (int pixels)
 				render ();
 				if (rendering_enabled)
 					v = t;
-				ppu_registers[PPUSTATUS] &= ~(VBLANK | SPRITE_ZERO_HIT);
+				ppu_registers[PPUSTATUS] &= ~(VBLANK | SPRITE_ZERO_HIT | SPRITE_OVERFLOW);
 				stop = 1;
 				// goto loop;
 			}
@@ -687,7 +728,7 @@ void nes_ppu_render (int pixels)
 		ppucc %= PPUCC_PER_FRAME;
 	}
 }
-
+// */
 
 void nes_ppu_load_vram (void *data)
 {
