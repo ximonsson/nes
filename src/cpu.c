@@ -578,12 +578,13 @@ operation;
 *  Execute an operation setting the number of bytes and the number
 *  of cycles the operation consumed.
 */
-static void operation_exec (operation *op)
+static int operation_exec (operation *op)
 {
 	flags &= ~PAGE_CROSS;
 	op->instr->exec (op->mode);
 	// det ska vara något special ifall vi har en viss addressing mode och om det var page cross.
 	// förra lösningen var inge vidare snygg, så vänta med denna.
+	return op->cycles;
 }
 
 #ifdef VERBOSE
@@ -1442,11 +1443,9 @@ int nes_cpu_step ()
 
 	// execute operation and step forward
 	pc ++;
-	operation_exec (op);
+	int cc = operation_exec (op);
 	pc += op->bytes;
-	cpucc += op->cycles;
-
-	// TODO add extra cycles
+	cpucc += cc;
 
 	#ifdef VERBOSE
 		printf ("\n");
@@ -1474,7 +1473,7 @@ int nes_cpu_step ()
 	if (cpucc > cpucc_per_frame)
 		cpucc -= cpucc_per_frame;
 
-	return op->cycles;
+	return cc;
 }
 
 
