@@ -27,7 +27,7 @@ static int   flags   = STOP;
 /**
 *  Parse an iNES type ROM file.
 */
-static int parse_ines_file (FILE *fp)
+static int load_ines (FILE *fp)
 {
 	unsigned char header[INES_HEADER_SIZE];
 	if (fread (header, 1, INES_HEADER_SIZE, fp) != INES_HEADER_SIZE)
@@ -105,11 +105,11 @@ static int parse_ines_file (FILE *fp)
 	}
 
 	// VERBOSE
-	printf ("PRG ROM size: %.2d x 16KB (= %.2dKB)\n", header[4], header[4] * 16);
-	printf ("CHR ROM size: %.2d x  8KB (= %.2dKB)\n", header[5], header[5] * 8);
-	printf ("PRG RAM size: %.2d x  8KB\n", prg_ram_size);
-	printf ("Trainer: %.3d\n", trainer_size);
-	printf ("Mapper: %.3d\n", mapper);
+	printf (" PRG ROM size: %.2d x 16KB (= %.2dKB)\n", header[4], header[4] * 16);
+	printf (" CHR ROM size: %.2d x  8KB (= %.2dKB)\n", header[5], header[5] * 8);
+	printf (" PRG RAM size: %.2d x  8KB\n", prg_ram_size);
+	printf (" Trainer: %.3d\n", trainer_size);
+	printf (" Mapper: %.3d\n", mapper);
 
 	if (chr_rom_size == 0)
 		printf ("CHR RAM is used instead of CHR ROM\n");
@@ -131,7 +131,7 @@ static int parse_ines_file (FILE *fp)
 /**
 *  Open a NES ROM file.
 */
-static int open (const char *file)
+static int load_game (const char *file)
 {
 	FILE *fp = fopen (file, "rb");
 	int ret = 0;
@@ -140,9 +140,9 @@ static int open (const char *file)
 		ret = 1;
 		goto end;
 	}
-	ret = parse_ines_file (fp);
+	ret = load_ines (fp);
 	fclose (fp);
-	end:
+end:
 	return ret;
 }
 
@@ -152,17 +152,33 @@ static int open (const char *file)
 void nes_run (const char *file)
 {
 	flags = 0;
-	// init hardware
-	nes_cpu_init ();
-	nes_ppu_init ();
-	// open file and init
-	if (open (file) != 0)
+
+	// load game
+	if (load_game (file) != 0)
 	{
 		fprintf (stderr, "error opening file\n");
 		return;
 	}
+
+	// init hardware
+	nes_cpu_init ();
+	nes_ppu_init ();
+
 	// run the game
-	nes_cpu_start ();
+	// nes_cpu_start ();
+	int cc = 0;
+	while (~flags & STOP)
+	{
+		for (int n = 0; n < NES_CPU_FREQ;)
+		{
+			cc = nes_cpu_step ();
+			for (int i = 0; i < cc * 3; i ++)
+			{
+				nes_ppu_step ();
+			}
+			n += cc;
+		}
+	}
 
 	// cleanup
 	free (prg_rom);
@@ -174,7 +190,7 @@ void nes_run (const char *file)
 void nes_stop ()
 {
 	flags |= STOP;
-	nes_cpu_stop ();
+	// nes_cpu_stop ();
 }
 
 

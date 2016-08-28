@@ -8,6 +8,7 @@
 
 #define NES_PRG_ROM_SIZE        0x8000
 #define NES_PRG_ROM_BANK_SIZE   0x4000
+#define NES_CPU_FREQ            1789773
 
 /**
  *  CPU signals
@@ -32,6 +33,12 @@ void nes_cpu_init () ;
  *  sent.
  */
 void nes_cpu_start () ;
+
+/**
+ *  nes_cpu_step reads one instruction and executes.
+ *  Returns the number of CPU cycles run.
+ */
+int nes_cpu_step () ;
 
 /**
  *  Stop the CPU from exekvation.

@@ -27,7 +27,7 @@
 
 #define PAGE_SIZE           256
 
-#define MEMORY_SIZE         65 << 10
+#define MEMORY_SIZE         (65 << 10)
 
 
 /**
@@ -384,12 +384,10 @@ static void branch (int8_t offset)
 *  Read a value from the memory.
 *  Loop through all read event handlers before returning the value.
 */
-static uint8_t read (uint16_t address)
+static uint8_t mem_read (uint16_t address)
 {
 	uint8_t b = memory[address];
 	// loop through read event handlers
-	// for (int i = 0; i < MAX_EVENT_HANDLERS; i ++)
-		// if (read_handlers[i] && (*read_handlers[i])(address, &b) == 1)
 	for (read_handler* handle = read_handlers; *handle != NULL; handle ++)
 		if ((*handle)(address, &b) == 1)
 			break;
@@ -400,25 +398,14 @@ static uint8_t read (uint16_t address)
 *  Store value to memory.
 *  Loop through and call all registered store event handlers.
 */
-static void store (uint8_t value, uint16_t address)
+static void mem_store (uint8_t value, uint16_t address)
 {
 	// loop through store event handlers
 	// any non-zero return value means we stop propagation and return
-	// for (int i = 0; i < MAX_EVENT_HANDLERS; i ++)
-	// {
-	// 	if (!store_handlers[i])
-	// 		break;
-	//
-	// 	if ((*store_handlers[i])(address, value) == 1)
-	// 		return;
-	// }
 	for (store_handler* handle = store_handlers; *handle != NULL; handle ++)
 		if ((*handle)(address, value) == 1)
 			return;
 
-	// #ifdef VERBOSE
-	// printf (" store $%.4X = %.2X", address, value);
-	// #endif
 	// if we arrive here it is alright to store to memory
 	memory[address] = value;
 	// Apply memory mirroring
@@ -461,7 +448,7 @@ static uint8_t get_value (addressing_mode mode)
 	else
 	{
 		uint16_t address = calculate_address (mode);
-		return read (address);
+		return mem_read (address);
 	}
 }
 
@@ -575,7 +562,7 @@ instruction;
 /**
 *  CPU Operation.
 *  Points to a CPU instruction with preset addressing mode.
-*  Already knows the number of bytes and cycles (ich) that the instruction
+*  Already knows the number of bytes and cycles (-ich) that the instruction
 *  will consume.
 */
 typedef struct operation
@@ -646,7 +633,7 @@ static void asl (addressing_mode mode) {
 	if (mode == ACCUMULATOR)
 		v = a;
 	else
-		v = read (adr);
+		v = mem_read (adr);
 
 	ps &= ~CARRY;
 	// set carry flag to bit 7 of value (indicates overflow)
@@ -660,7 +647,7 @@ static void asl (addressing_mode mode) {
 	if (mode == ACCUMULATOR)
 		a = v;
 	else
-		store (v, adr);
+		mem_store (v, adr);
 }
 static const instruction ASL = { "ASL", &asl };
 
@@ -868,9 +855,9 @@ static const instruction CPY = { "CPY", &cpy };
 static void dec (addressing_mode mode)
 {
 	uint16_t adr  = calculate_address (mode);
-	uint8_t value = read (adr) - 1;
+	uint8_t value = mem_read (adr) - 1;
 	set_flags (value, ZERO | NEGATIVE);
-	store (value, adr);
+	mem_store (value, adr);
 }
 static const instruction DEC = { "DEC", &dec };
 
@@ -907,9 +894,9 @@ static const instruction EOR = { "EOR", &eor };
 static void inc (addressing_mode mode)
 {
 	uint16_t adr = calculate_address (mode);
-	uint8_t value = read (adr) + 1;
+	uint8_t value = mem_read (adr) + 1;
 	set_flags (value, ZERO | NEGATIVE);
-	store (value, adr);
+	mem_store (value, adr);
 }
 static const instruction INC = { "INC", &inc };
 
@@ -992,7 +979,7 @@ static void lsr (addressing_mode mode)
 	if (mode == ACCUMULATOR)
 		b = a;
 	else
-		b = read (adr);
+		b = mem_read (adr);
 
 	ps  &= ~CARRY;
 	ps  |= b & 1;
@@ -1002,7 +989,7 @@ static void lsr (addressing_mode mode)
 	if (mode == ACCUMULATOR)
 		a = b;
 	else
-		store (b, adr);
+		mem_store (b, adr);
 }
 static const instruction LSR = { "LSR", &lsr };
 
@@ -1063,7 +1050,7 @@ static void rol (addressing_mode mode)
 	if (mode == ACCUMULATOR)
 		b = a;
 	else
-		b = read (adr);
+		b = mem_read (adr);
 
 	uint8_t c = b >> 7 & 1;
 	b  <<= 1;
@@ -1076,7 +1063,7 @@ static void rol (addressing_mode mode)
 	if (mode == ACCUMULATOR)
 		a = b;
 	else
-		store (b, adr);
+		mem_store (b, adr);
 }
 static const instruction ROL = { "ROL", &rol };
 
@@ -1090,7 +1077,7 @@ static void ror (addressing_mode mode)
 	if (mode == ACCUMULATOR)
 		b = a;
 	else
-		b = read (adr);
+		b = mem_read (adr);
 
 	uint8_t c = b & 1;
 	b  >>= 1;
@@ -1103,7 +1090,7 @@ static void ror (addressing_mode mode)
 	if (mode == ACCUMULATOR)
 		a = b;
 	else
-		store (b, adr);
+		mem_store (b, adr);
 }
 static const instruction ROR = { "ROR", &ror };
 
@@ -1176,7 +1163,7 @@ static const instruction SEI = { "SEI", &sei };
 static void sta (addressing_mode mode)
 {
 	uint16_t adr = calculate_address (mode);
-	store (a, adr);
+	mem_store (a, adr);
 }
 static const instruction STA = { "STA", &sta };
 
@@ -1185,7 +1172,7 @@ static const instruction STA = { "STA", &sta };
 static void stx (addressing_mode mode)
 {
 	uint16_t adr = calculate_address (mode);
-	store (x, adr);
+	mem_store (x, adr);
 }
 static const instruction STX = { "STX", &stx };
 
@@ -1194,7 +1181,7 @@ static const instruction STX = { "STX", &stx };
 static void sty (addressing_mode mode)
 {
 	uint16_t adr = calculate_address (mode);
-	store (y, adr);
+	mem_store (y, adr);
 }
 static const instruction STY = { "STY", &sty };
 
@@ -1402,7 +1389,7 @@ void nes_cpu_init ()
 	ps  = 0x34;
 
 	// init memory
-	memset (memory, 0, MEMORY_SIZE);
+	// memset (memory, 0, PRG_ROM_LOCATION);
 	for (int i = 0; i < 0x800; i ++)
 		memory[i] = 0xFF;
 	memory[0x0008] = 0xF7;
@@ -1411,6 +1398,13 @@ void nes_cpu_init ()
 	memory[0x000F] = 0xBF;
 	// memory[0x4015] = 0xF7;
 	// memory[0x4017] = 0xF7;
+
+	flags = 0;
+	cpucc = 0;
+
+	// load program counter
+	pc = memory[RST_VECTOR + 1];
+	pc = pc << 8 | memory[RST_VECTOR];
 
 	memset (store_handlers, 0, MAX_EVENT_HANDLERS * sizeof (store_handler));
 	memset (read_handlers,  0, MAX_EVENT_HANDLERS * sizeof (read_handler));
@@ -1426,83 +1420,83 @@ void nes_cpu_init ()
 }
 
 
+int nes_cpu_step ()
+{
+	uint8_t opcode = memory[pc];
+	operation* op = &operations[opcode >> 4 & 0xF][opcode & 0xF];
+
+	#ifdef VERBOSE
+		char reg_string[128] = {0};
+		char op_string[128] = {0};
+
+		sprintf (reg_string, "A:%.2X X:%.2X Y:%.2X PS:%.2X SP:%.2X ", a, x, y, ps, sp);
+		operation_to_string (op, op_string);
+		// printf ("%.4X %.2X %-32s %s\n", pc, opcode, op_string, reg_string);
+		printf ("%.4X  ", pc);
+		for (int i = 0; i < op->bytes + 1; i ++)
+			printf ("%.2X ", memory[pc + i]);
+		for (int i = 0; i < 3 - op->bytes - 1; i ++)
+			printf ("   ");
+		printf (" %-32s %s", op_string, reg_string);
+	#endif
+
+	// execute operation and step forward
+	pc ++;
+	operation_exec (op);
+	pc += op->bytes;
+	cpucc += op->cycles;
+
+	// TODO add extra cycles
+
+	#ifdef VERBOSE
+		printf ("\n");
+	#endif
+
+	if (signals & NMI)
+	{
+		// NMI interrupt
+		uint16_t nmi_vector = memory[NMI_VECTOR + 1];
+		nmi_vector = nmi_vector << 8 | memory[NMI_VECTOR];
+		interrupt (nmi_vector);
+		signals &= ~NMI;
+		// TODO i've seen somewhere CPUCC += 7, do some reading
+	}
+	else if ((signals & IRQ) && (ps & INTERRUPT))
+	{
+		// IRQ signal
+		uint16_t irq_vector = memory[IRQ_VECTOR + 1];
+		irq_vector = irq_vector << 8 | memory[IRQ_VECTOR];
+		interrupt (irq_vector);
+		signals &= ~IRQ;
+	}
+
+	int cpucc_per_frame = SCANLINES_PER_FRAME * PPUCC_PER_SCANLINE / PPU_CC_PER_CPU_CC + 1;
+	if (cpucc > cpucc_per_frame)
+		cpucc -= cpucc_per_frame;
+
+	return op->cycles;
+}
+
+
 /**
 *  Run the CPU and the game.
 */
 void nes_cpu_start ()
 {
-	uint8_t     opcode;
-	operation  *op;
-	int         cpucc_per_frame = SCANLINES_PER_FRAME * PPUCC_PER_SCANLINE / PPU_CC_PER_CPU_CC + 1;
-
-	flags   = 0;
-	cpucc   = 0;
-	pc      = memory[RST_VECTOR + 1];
-	pc      = pc << 8 | memory[RST_VECTOR];
+	flags = 0;
+	cpucc = 0;
+	pc = memory[RST_VECTOR + 1];
+	pc = pc << 8 | memory[RST_VECTOR];
 
 	#ifdef VERBOSE
 		pc = 0xC000;
 		printf ("PC starting @ $%.4X\n", pc);
-		char reg_string[128];
-		char op_string[128];
 	#endif
 
 	while (pc < MEMORY_SIZE && (~flags & STOP))
 	{
 		pthread_mutex_lock (&mutex);
-
-		opcode  = memory[pc];
-		op      = &operations[opcode >> 4 & 0xF][opcode & 0xF];
-
-		#ifdef VERBOSE
-			memset  (reg_string, 0, 128);
-			memset  (op_string,  0, 128);
-
-			sprintf (reg_string, "A:%.2X X:%.2X Y:%.2X PS:%.2X SP:%.2X ", a, x, y, ps, sp);
-			operation_to_string (op, op_string);
-			// printf ("%.4X %.2X %-32s %s\n", pc, opcode, op_string, reg_string);
-			printf ("%.4X  ", pc);
-			for (int i = 0; i < op->bytes + 1; i ++)
-				printf ("%.2X ", memory[pc + i]);
-			for (int i = 0; i < 3 - op->bytes - 1; i ++)
-				printf ("   ");
-			printf (" %-32s %s", op_string, reg_string);
-		#endif
-
-		// execute operation and step forward
-		pc ++;
-		operation_exec (op);
-		pc      += op->bytes;
-		cpucc   += op->cycles;
-
-		#ifdef VERBOSE
-			printf ("\n");
-		#endif
-
-		// render
-		nes_ppu_render (op->cycles * PPU_CC_PER_CPU_CC);
-
-		if (cpucc > cpucc_per_frame)
-			cpucc -= cpucc_per_frame;
-
-		if (signals & NMI)
-		{
-			// NMI interrupt
-			uint16_t nmi_vector = memory[NMI_VECTOR + 1];
-			nmi_vector = nmi_vector << 8 | memory[NMI_VECTOR];
-			interrupt (nmi_vector);
-			signals &= ~NMI;
-			// TODO i've seen somewhere CPUCC += 7, do some reading
-		}
-		else if ((signals & IRQ) && (ps & INTERRUPT))
-		{
-			// IRQ signal
-			uint16_t irq_vector = memory[IRQ_VECTOR + 1];
-			irq_vector = irq_vector << 8 | memory[IRQ_VECTOR];
-			interrupt (irq_vector);
-			signals &= ~IRQ;
-		}
-
+		nes_cpu_step ();
 		pthread_mutex_unlock (&mutex);
 	}
 }

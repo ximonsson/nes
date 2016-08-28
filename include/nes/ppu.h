@@ -68,6 +68,8 @@ void nes_ppu_init ();
  */
 void nes_ppu_render (int pixels);
 
+void nes_ppu_step () ;
+
 /**
  *  Tell the PPU how to mirror the tiles.
  *  If this is not set it will default to HORIZONTAL.

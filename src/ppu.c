@@ -68,13 +68,13 @@ void nes_ppu_init ()
 	ppucc = 0;
 
 	// reset scrolling and VRAM
-	memset (vram, 0, VRAM_SIZE);
+	// memset (vram, 0, VRAM_SIZE);
 	t = v = x = 0;
 	vram_buffer = 0;
 
 	// clear OAM
-	memset (primary_oam,   0, 64 * 4);
-	memset (secondary_oam, 0, 8 * sizeof (int));
+	// memset (primary_oam,   0, 64 * 4);
+	// memset (secondary_oam, 0, 8 * sizeof (int));
 
 	// clear screen
 	memset (screen, 0, SCREEN_W * SCREEN_H * 3);
@@ -371,7 +371,7 @@ static void sprite_evaluation ()
 		}
 	}
 	// in case we found 8, check for overflow
-	if (sprites == 8)
+	if (sprites == SECONDARY_OAM_SIZE)
 	{
 		for (m = 0; i < PRIMARY_OAM_SIZE * 4; i += 4)
 		{
@@ -468,6 +468,112 @@ static void set_pixel_color (int x, int y, uint8_t pindex)
 		*(p + i) *= mod;
 }
 
+void nes_ppu_step ()
+{
+	int x = ppucc % PPUCC_PER_SCANLINE;
+	int y = ppucc / PPUCC_PER_SCANLINE - BLANK_SCANLINES;
+	int rendering_enabled = (ppu_registers[PPUMASK] & 0x18) != 0;
+
+	// HBLANK or VBLANK
+	if (y < 0 || x >= SCREEN_W)
+	{
+		if (x == 0 && y == -BLANK_SCANLINES + 2)
+		{
+			ppu_registers[PPUSTATUS] |= VBLANK;
+			if (ppu_registers[PPUCTRL] & GENERATE_NMI)
+				nes_cpu_signal (NMI);
+		}
+		// increment v if rendering is enabled
+		else if (x == SCREEN_W && rendering_enabled)
+			increment_vertical_scroll ();
+
+		goto loop;
+	}
+
+	if (x == 0)
+	{
+		// start of visual screen
+		if (y == 0)
+		{
+			render ();
+			if (rendering_enabled)
+				v = t;
+			ppu_registers[PPUSTATUS] &= ~(VBLANK | SPRITE_ZERO_HIT);
+		}
+		else if (rendering_enabled)
+			v = (v & ~0x041F) | (t & 0x041F);
+
+		sprite_evaluation ();
+	}
+	// increment v horizontally
+	else if (x % 8 == 0 && rendering_enabled && y != 0)
+		increment_horizontal_scroll ();
+
+	// no point continuing the iteration from here if rendering is disabled
+	if (!rendering_enabled)
+		goto loop;
+
+	uint8_t bg_pixel = 0,
+	        sprite_pixel = 0,
+	        bg_color = 0,
+	        sprite_clr = 0;
+
+	// background
+	if (!((ppu_registers[PPUMASK] & 0x08) == 0 || ((ppu_registers[PPUMASK] & 0x02) == 0 && y < 8 && x < 8)))
+	{
+		background_color (x, y, &bg_pixel, &bg_color);
+		if (bg_pixel != 0)
+			set_pixel_color (x, y, bg_color);
+	}
+	// sprites
+	if (!((ppu_registers[PPUMASK] & 0x10) == 0 || ((ppu_registers[PPUMASK] & 0x4) == 0 && y < 8 && x < 8)))
+	{
+		uint8_t *sprite;
+		int j, x_off, y_off;
+		uint8_t tmp;
+
+		// loop through secondary OAM
+		for (int i = 0; i < SECONDARY_OAM_SIZE && sprite_pixel == 0; i ++)
+		{
+			// no more sprites in 2nd OAM
+			if (secondary_oam[i] == 0xFF)
+				break;
+
+			j = secondary_oam[i];
+			sprite = primary_oam + j * 4;
+
+			// sprite too far away
+			if (!(sprite[3] <= x && x - sprite[3] < 8))
+				continue;
+
+			x_off = x - sprite[3];
+			y_off = y - sprite[0];
+			sprite_color (j, x_off, y_off, &tmp, &sprite_clr);
+			// sprite found
+			if (tmp != 0)
+			{
+				if (bg_pixel != 0)
+				{
+					// sprite zero hit
+					if (j == 0)
+						ppu_registers[PPUSTATUS] |= SPRITE_ZERO_HIT;
+					// bg priority
+					if ((sprite[2] & 0x20) == 0x20)
+						continue;
+				}
+				sprite_pixel = tmp;
+				set_pixel_color (x, y, sprite_clr);
+			}
+		}
+	}
+	// copy backdrop color
+	if (bg_pixel == 0 && sprite_pixel == 0)
+		set_pixel_color (x, y, vram[0x3F00]);
+
+loop:
+	ppucc ++;
+	ppucc %= PPUCC_PER_FRAME;
+}
 
 void nes_ppu_render (int pixels)
 {
