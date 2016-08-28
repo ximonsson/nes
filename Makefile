@@ -19,6 +19,10 @@ else
 CFLAGS += -O3
 endif
 
+ifdef VERBOSE
+CFLAGS += -DVERBOSE
+endif
+
 INCLUDES = -I./include
 
 LDFLAGS += -L./libs -lSDL2 -lGLESv2 -lpthread -lnes
