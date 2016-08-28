@@ -1,3 +1,7 @@
+/** ------------------------------------------------------------------------------------------------------- *
+ *  File: main.c
+ *  Description: Test application to run the nes emulator. Runs with OpenGL ES.
+ *  ------------------------------------------------------------------------------------------------------- */
 #include "nes.h"
 #include <stdio.h>
 #include <pthread.h>
