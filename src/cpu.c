@@ -340,7 +340,7 @@ static uint16_t calculate_address (addressing_mode mode)
 {
 	uint16_t addr = (*address_calculators[mode])();
 	// set page cross flag if we crossing pages
-	if (addr / PAGE_SIZE != pc / PAGE_SIZE) // TODO this is not set for all instructions i thinkz
+	if ((addr & 0xFF00) != (pc && 0xFF00)) // TODO this is not set for all instructions i thinkz
 		flags |= PAGE_CROSS;
 	return addr;
 }
@@ -931,12 +931,7 @@ static const instruction JMP = { "JMP", &jmp };
 // Jump to subroutine
 static void jsr (addressing_mode mode)
 {
-	// uint16_t b;
 	uint16_t adr = calculate_address (mode);
-	// pc += b - 1;
-	// det undre är kanske super duper korrekt iom att instruktionen ska
-	// vara oberoende av adresseringsmetod, men det finns bara ett sätt att kalla på den så
-	// vi vet antalet bytes den ska fram.
 	pc ++;
 	push (pc >> 8);
 	push (pc);
