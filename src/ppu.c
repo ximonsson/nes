@@ -591,9 +591,7 @@ static void inline tick ()
 	// tick PPU and update dot and scanline
 	ppucc ++;
 	ppucc %= PPUCC_PER_FRAME;
-	scanln = ppucc / PPUCC_PER_SCANLINE;
-	dot = ppucc % PPUCC_PER_SCANLINE;
-	if (dot == 0 && scanln == 0)
+	if (ppucc == 0)
 	{
 		// New frame
 		flags ^= odd_frame; // toggle odd frame flag
@@ -656,10 +654,10 @@ void nes_ppu_step ()
 		{
 			// Set VBLANK and generate NMI
 			ppu_registers[PPUSTATUS] |= VBLANK;
-			// TODO I feel like generating NMIs are little more complex than this
 			if (ppu_registers[PPUCTRL] & GENERATE_NMI)
 			{
 				flags |= nmi_occurred;
+				// TODO i have seen implementations where they delay this a number of cycles
 				nes_cpu_signal (NMI);
 			}
 		}
