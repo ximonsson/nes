@@ -39,6 +39,7 @@ enum processor_status_flags
 	ZERO        = 0x02,
 	INTERRUPT   = 0x04,
 	DECIMAL     = 0x08,
+	// unused   = 0x10
 	BREAK       = 0x20,
 	OVERFLOW    = 0x40,
 	NEGATIVE    = 0x80
@@ -428,7 +429,7 @@ static inline void interrupt (uint16_t _pc)
 	push (pc);
 	push (ps);
 	pc = _pc;
-	pc |= INTERRUPT;
+	ps |= INTERRUPT; // disable interrupt
 	cpucc += 7;
 }
 
@@ -574,13 +575,14 @@ operation;
 *  Execute an operation setting the number of bytes and the number
 *  of cycles the operation consumed.
 */
-static int operation_exec (operation *op)
+static void operation_exec (operation *op)
 {
 	flags &= ~PAGE_CROSS;
 	op->instr->exec (op->mode);
+	cpucc += op->cycles;
+	pc += op->bytes;
 	// det ska vara något special ifall vi har en viss addressing mode och om det var page cross.
 	// förra lösningen var inge vidare snygg, så vänta med denna.
-	return op->cycles;
 }
 
 #ifdef VERBOSE
@@ -1412,15 +1414,20 @@ void nes_cpu_init ()
 }
 
 
+/**
+ *  nmi generates an interrupt and loads the NMI vector.
+ */
 static void nmi ()
 {
 	uint16_t nmi_vector = memory[NMI_VECTOR + 1];
 	nmi_vector = nmi_vector << 8 | memory[NMI_VECTOR];
 	interrupt (nmi_vector);
-	signals &= ~NMI;
 }
 
 
+/**
+ *  irq generates an interrupt if the interrupts are not disabled, and loads the IRQ vector.
+ */
 static void irq ()
 {
 	if (ps & INTERRUPT)
@@ -1429,7 +1436,6 @@ static void irq ()
 		irq_vector = irq_vector << 8 | memory[IRQ_VECTOR];
 		interrupt (irq_vector);
 	}
-	signals &= ~IRQ;
 }
 
 #ifdef VERBOSE
@@ -1452,12 +1458,9 @@ void print_operation (operation* op) {
 
 int nes_cpu_step ()
 {
-	// check interrupts first
-	if (signals & NMI)
-		nmi ();
-	else if (signals & IRQ)
-		irq ();
+	int cc = cpucc;
 
+	// get operation
 	uint8_t opcode = memory[pc];
 	operation* op = &operations[opcode >> 4 & 0xF][opcode & 0xF];
 
@@ -1467,15 +1470,22 @@ int nes_cpu_step ()
 
 	// execute operation and step forward
 	pc ++;
-	int cc = operation_exec (op);
-	pc += op->bytes;
-	cpucc += cc;
+	operation_exec (op);
 
 	#ifdef VERBOSE
 		printf ("\n");
 	#endif
 
-	static int cpucc_per_frame = SCANLINES_PER_FRAME * PPUCC_PER_SCANLINE / PPU_CC_PER_CPU_CC + 1;
+	// check interrupts
+	if (signals & NMI)
+		nmi ();
+	else if (signals & IRQ)
+		irq ();
+	signals = 0;
+
+
+	cc = cpucc - cc;
+	int cpucc_per_frame = SCANLINES_PER_FRAME * PPUCC_PER_SCANLINE / PPU_CC_PER_CPU_CC + 1;
 	if (cpucc > cpucc_per_frame)
 		cpucc -= cpucc_per_frame;
 
