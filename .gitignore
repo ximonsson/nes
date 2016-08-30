@@ -3,3 +3,4 @@ bin/*
 libnes.a
 *.o
 *.nes
+*.swp
