@@ -171,6 +171,8 @@ void nes_run (const char *file)
 	int cc = 0;
 	while (~flags & STOP)
 	{
+		// TODO check pause
+
 		// perform CPU instruction
 		cc = nes_cpu_step ();
 		// render on PPU
@@ -203,7 +205,6 @@ void nes_pause ()
 {
 	if (flags & STOP)
 		return;
-	nes_cpu_pause ();
 	flags ^= PAUSE;
 }
 

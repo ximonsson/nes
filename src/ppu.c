@@ -224,9 +224,13 @@ void nes_ppu_register_write (nes_ppu_register reg, uint8_t value)
 static uint8_t read_ppustatus ()
 {
 	uint8_t ret = ppu_registers[PPUSTATUS];
+	// clear VBLANK flag
 	ppu_registers[PPUSTATUS] &= ~VBLANK;
-	// TODO might be some modification to NMI status here
-	flags &= ~w;
+	// set bit 7 to old status of NMI occurred
+	ret |= (flags & nmi_occurred) << 4;
+	// reset address latch for PPUSCROLL and NMI occured.
+	flags &= (~w & ~nmi_occurred);
+
 	return ret;
 }
 
@@ -391,6 +395,7 @@ static uint8_t background_color (int dot, uint8_t *pixel)
 	uint8_t palette = (attribute >> (((1 - (y & 1)) << 2) + ((dot & 1) << 1))) & 3;
 	// compute color index within palette
 	*pixel = ((vram[pattern] >> (7 - dot)) & 1) | ((vram[pattern + 8] >> (6 - dot)) & 2);
+
 	return vram[0x3F00 + (palette << 2) + (*pixel)];
 }
 
@@ -565,6 +570,9 @@ static void sprite_evaluation (int scanline)
 }
 
 
+/**
+ *  tick makes the PPU turn one cycle, and making any status updates by doing so.
+ */
 static void inline tick ()
 {
 	// static uint8_t odd_frame = 0;
@@ -596,16 +604,17 @@ static void inline tick ()
 
 void nes_ppu_step ()
 {
-	tick ();
+	tick (); // go forward one cycle
+
 	// compute if rendering is enabled
 	int rendering_enabled = (ppu_registers[PPUMASK] & 0x18) != 0;
 
 	int scanln = ppucc / PPUCC_PER_SCANLINE;
-	int pre_scanln = scanln == (SCANLINES_PER_FRAME - 1);
-	int visible_scanln = scanln < SCREEN_H;
+	int pre_scanln = scanln == (SCANLINES_PER_FRAME - 1); // line 261
+	int visible_scanln = scanln < SCREEN_H;               // lines 0 -> 239
 
 	int dot = ppucc % PPUCC_PER_SCANLINE;
-	int visible_dot = dot >= 1 && dot <= SCREEN_W; // remember: first dot is idle
+	int visible_dot = dot >= 1 && dot <= SCREEN_W; // dot 1 -> 256, remember: first dot is idle
 
 	if (rendering_enabled)
 	{
@@ -643,20 +652,21 @@ void nes_ppu_step ()
 
 	if (dot == 1)
 	{
-		if (scanln == SCREEN_H + 1)
+		if (scanln == SCREEN_H + 1) // line 241
 		{
 			// Set VBLANK and generate NMI
 			ppu_registers[PPUSTATUS] |= VBLANK;
 			// TODO I feel like generating NMIs are little more complex than this
 			if (ppu_registers[PPUCTRL] & GENERATE_NMI)
 			{
-
+				flags |= nmi_occurred;
 				nes_cpu_signal (NMI);
 			}
 		}
 		else if (pre_scanln)
 		{
 			// clear vblank sprite overflow and sprite #0 hit
+			flags &= ~nmi_occurred;
 			ppu_registers[PPUSTATUS] &= ~(VBLANK | SPRITE_ZERO_HIT | SPRITE_OVERFLOW);
 		}
 	}

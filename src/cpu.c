@@ -31,12 +31,6 @@
 
 
 /**
-*  Mutex and condition for thread safe signaling to the CPU.
-*/
-static pthread_mutex_t mutex           = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t  pause_condition = PTHREAD_COND_INITIALIZER;
-
-/**
 *  Processor Status Flags
 */
 enum processor_status_flags
@@ -434,6 +428,8 @@ static inline void interrupt (uint16_t _pc)
 	push (pc);
 	push (ps);
 	pc = _pc;
+	pc |= INTERRUPT;
+	cpucc += 7;
 }
 
 /**
@@ -1416,24 +1412,57 @@ void nes_cpu_init ()
 }
 
 
+static void nmi ()
+{
+	uint16_t nmi_vector = memory[NMI_VECTOR + 1];
+	nmi_vector = nmi_vector << 8 | memory[NMI_VECTOR];
+	interrupt (nmi_vector);
+	signals &= ~NMI;
+}
+
+
+static void irq ()
+{
+	if (ps & INTERRUPT)
+	{
+		uint16_t irq_vector = memory[IRQ_VECTOR + 1];
+		irq_vector = irq_vector << 8 | memory[IRQ_VECTOR];
+		interrupt (irq_vector);
+	}
+	signals &= ~IRQ;
+}
+
+#ifdef VERBOSE
+void print_operation (operation* op) {
+	char reg_string[128] = {0};
+	char op_string[128] = {0};
+
+	sprintf (reg_string, "A:%.2X X:%.2X Y:%.2X PS:%.2X SP:%.2X ", a, x, y, ps, sp);
+	operation_to_string (op, op_string);
+	// printf ("%.4X %.2X %-32s %s\n", pc, opcode, op_string, reg_string);
+	printf ("%.4X  ", pc);
+	for (int i = 0; i < op->bytes + 1; i ++)
+		printf ("%.2X ", memory[pc + i]);
+	for (int i = 0; i < 3 - op->bytes - 1; i ++)
+		printf ("   ");
+	printf (" %-32s %s", op_string, reg_string);
+}
+#endif
+
+
 int nes_cpu_step ()
 {
+	// check interrupts first
+	if (signals & NMI)
+		nmi ();
+	else if (signals & IRQ)
+		irq ();
+
 	uint8_t opcode = memory[pc];
 	operation* op = &operations[opcode >> 4 & 0xF][opcode & 0xF];
 
 	#ifdef VERBOSE
-		char reg_string[128] = {0};
-		char op_string[128] = {0};
-
-		sprintf (reg_string, "A:%.2X X:%.2X Y:%.2X PS:%.2X SP:%.2X ", a, x, y, ps, sp);
-		operation_to_string (op, op_string);
-		// printf ("%.4X %.2X %-32s %s\n", pc, opcode, op_string, reg_string);
-		printf ("%.4X  ", pc);
-		for (int i = 0; i < op->bytes + 1; i ++)
-			printf ("%.2X ", memory[pc + i]);
-		for (int i = 0; i < 3 - op->bytes - 1; i ++)
-			printf ("   ");
-		printf (" %-32s %s", op_string, reg_string);
+		print_operation (op);
 	#endif
 
 	// execute operation and step forward
@@ -1446,77 +1475,9 @@ int nes_cpu_step ()
 		printf ("\n");
 	#endif
 
-	if (signals & NMI)
-	{
-		// NMI interrupt
-		uint16_t nmi_vector = memory[NMI_VECTOR + 1];
-		nmi_vector = nmi_vector << 8 | memory[NMI_VECTOR];
-		interrupt (nmi_vector);
-		signals &= ~NMI;
-		// TODO i've seen somewhere CPUCC += 7, do some reading
-	}
-	else if ((signals & IRQ) && (ps & INTERRUPT))
-	{
-		// IRQ signal
-		uint16_t irq_vector = memory[IRQ_VECTOR + 1];
-		irq_vector = irq_vector << 8 | memory[IRQ_VECTOR];
-		interrupt (irq_vector);
-		signals &= ~IRQ;
-	}
-
-	int cpucc_per_frame = SCANLINES_PER_FRAME * PPUCC_PER_SCANLINE / PPU_CC_PER_CPU_CC + 1;
+	static int cpucc_per_frame = SCANLINES_PER_FRAME * PPUCC_PER_SCANLINE / PPU_CC_PER_CPU_CC + 1;
 	if (cpucc > cpucc_per_frame)
 		cpucc -= cpucc_per_frame;
 
 	return cc;
-}
-
-
-/**
-*  Run the CPU and the game.
-*/
-void nes_cpu_start ()
-{
-	flags = 0;
-	cpucc = 0;
-	pc = memory[RST_VECTOR + 1];
-	pc = pc << 8 | memory[RST_VECTOR];
-
-	#ifdef VERBOSE
-		pc = 0xC000;
-		printf ("PC starting @ $%.4X\n", pc);
-	#endif
-
-	while (pc < MEMORY_SIZE && (~flags & STOP))
-	{
-		pthread_mutex_lock (&mutex);
-		nes_cpu_step ();
-		pthread_mutex_unlock (&mutex);
-	}
-}
-
-
-void nes_cpu_stop ()
-{
-	pthread_mutex_lock (&mutex);
-	flags |= STOP;
-	pthread_mutex_unlock (&mutex);
-}
-
-
-void nes_cpu_pause ()
-{
-	pthread_mutex_lock (&mutex);
-	// pause
-	if (~flags & PAUSE)
-	{
-		flags |= PAUSE;
-	}
-	// unpause
-	else
-	{
-		flags &= ~PAUSE;
-		pthread_cond_signal (&pause_condition);
-	}
-	pthread_mutex_unlock (&mutex);
 }

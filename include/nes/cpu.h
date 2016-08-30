@@ -28,28 +28,10 @@ enum nes_cpu_signal
 void nes_cpu_init () ;
 
 /**
- *  Run the CPU and also the game.
- *  This function is blocking until game is done or kill signal has been
- *  sent.
- */
-void nes_cpu_start () ;
-
-/**
  *  nes_cpu_step reads one instruction and executes.
  *  Returns the number of CPU cycles run.
  */
 int nes_cpu_step () ;
-
-/**
- *  Stop the CPU from exekvation.
- *  This will also stop the entire emulator and game.
- */
-void nes_cpu_stop () ;
-
-/**
- *  Toggle pause state of the CPU.
- */
-void nes_cpu_pause () ;
 
 /**
 *  Load entire PRG ROM from data source.
