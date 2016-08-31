@@ -62,7 +62,6 @@ static int load_ines (FILE *fp)
 		mirroring = FOUR_SCREEN;
 		break;
 	}
-	nes_ppu_set_mirroring_mode (mirroring);
 
 	// read PRG ROM --------------------------------------------------
 	int prg_rom_size = header[4] * 16 << 10;

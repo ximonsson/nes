@@ -74,12 +74,6 @@ void nes_ppu_render (int pixels);
 void nes_ppu_step () ;
 
 /**
- *  Tell the PPU how to mirror the tiles.
- *  If this is not set it will default to HORIZONTAL.
- */
-void nes_ppu_set_mirroring_mode (nes_ppu_mirroring_mode mirror);
-
-/**
  *  Load data into VRAM.
  */
 void nes_ppu_load_vram (void *data) ;

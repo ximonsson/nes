@@ -95,7 +95,6 @@ void nes_ppu_init ()
 	// reset flags
 	flags = 0;
 	ppucc = SCREEN_H * PPUCC_PER_SCANLINE - 1; // we start in vblank
-	// ppucc = 0;
 
 	// reset scrolling and VRAM
 	// memset (vram, 0, VRAM_SIZE);
@@ -117,22 +116,6 @@ static void write_ppuctrl (uint8_t value)
 	t = (t & 0xF3FF) | ((value & 3) << 10);
 }
 
-/*
-static void write_ppumask (uint8_t value)
-{
-// nada
-}
-
-static void write_ppustatus (uint8_t value)
-{
-// nada
-}
-
-static void write_oamaddr (uint8_t value)
-{
-// nada
-}
-*/
 
 static void write_oamdata (uint8_t value)
 {
@@ -140,6 +123,7 @@ static void write_oamdata (uint8_t value)
 	primary_oam[*oamaddr] = value;
 	*oamaddr += 1;
 }
+
 
 static void write_ppuscroll (uint8_t value)
 {
@@ -224,12 +208,12 @@ void nes_ppu_register_write (nes_ppu_register reg, uint8_t value)
 static uint8_t read_ppustatus ()
 {
 	uint8_t ret = ppu_registers[PPUSTATUS];
+	// set bit 7 to old status of NMI occurred
+	// ret = (ret & 0x7F) | (flags & nmi_occurred) << 6;
+	// reset address latch for PPUSCROLL and NMI occured.
+	flags &= ~(w | nmi_occurred);
 	// clear VBLANK flag
 	ppu_registers[PPUSTATUS] &= ~VBLANK;
-	// set bit 7 to old status of NMI occurred
-	ret |= (flags & nmi_occurred) << 4;
-	// reset address latch for PPUSCROLL and NMI occured.
-	flags &= (~w & ~nmi_occurred);
 
 	return ret;
 }
@@ -281,56 +265,6 @@ uint8_t nes_ppu_register_read (nes_ppu_register reg)
 		return (*register_read_callbacks[reg])();
 	else
 		return ppu_registers[reg];
-}
-
-
-/*
- *  MIRRORING
- */
-
-/* mirroring contains the current mirroring mode. Defaults to HORIZONTAL */
-static nes_ppu_mirroring_mode mirroring = HORIZONTAL;
-
-/* mirror_func will point to the current mirroring function used. */
-static void (*mirror_func) (int *, int *, int *);
-
-/* mirror_horizontally applies horizontal mirroring */
-static void mirror_horizontally (int* x, int* y, int* nametable)
-{
-	*y %= SCREEN_H * 2;
-	*nametable += (*y) / SCREEN_H * 0x400;
-}
-
-/* mirror_vertically applies vertical mirroring */
-static void mirror_vertically (int *x, int *y, int *nametable)
-{
-	*x %= SCREEN_W * 2;
-	*nametable += (*x) / SCREEN_W * 0x400;
-}
-
-/* mirror_four_screen applies four screen mirroring */
-static void mirror_four_screen (int *x, int *y, int *nametable)
-{
-	// TODO implement
-}
-
-void nes_ppu_set_mirroring_mode (nes_ppu_mirroring_mode _mirroring)
-{
-	mirroring = _mirroring;
-	switch (mirroring)
-	{
-		case HORIZONTAL:
-			mirror_func = &mirror_horizontally;
-		break;
-
-		case VERTICAL:
-			mirror_func = &mirror_vertically;
-		break;
-
-		case FOUR_SCREEN:
-			mirror_func = &mirror_four_screen;
-		break;
-	}
 }
 
 
@@ -569,13 +503,11 @@ static void sprite_evaluation (int scanline)
 	}
 }
 
-
 /**
  *  tick makes the PPU turn one cycle, and making any status updates by doing so.
  */
 static void inline tick ()
 {
-	// static uint8_t odd_frame = 0;
 	// compute if rendering is enabled
 	int rendering_enabled = (ppu_registers[PPUMASK] & 0x18) != 0;
 
@@ -670,193 +602,6 @@ void nes_ppu_step ()
 	}
 }
 
-
-
-// DEPRECATED --------------------------------------------------------------------------------------
-/*
-// static int render_buf = 0;
-void nes_ppu_step_old ()
-{
-	// TODO even/odd frame flag
-	//     if rendering is enabled: odd frames are one cycle shorter
-	//        => (339, 261) -> (0, 0). skip first idle tick of the first visible scanline
-
-	ppucc ++; // tick PPU
-	ppucc %= PPUCC_PER_FRAME;
-
-	int x = ppucc % PPUCC_PER_SCANLINE - 1;
-	int y = ppucc / PPUCC_PER_SCANLINE - BLANK_SCANLINES;
-	int rendering_enabled = (ppu_registers[PPUMASK] & 0x18) != 0;
-
-	// HBLANK or VBLANK
-	if (y < 0 || x >= SCREEN_W)
-	{
-		if (x == 0 && y == -BLANK_SCANLINES - 1)
-		{
-			ppu_registers[PPUSTATUS] |= VBLANK; // set vblank
-			if (ppu_registers[PPUCTRL] & GENERATE_NMI)
-				nes_cpu_signal (NMI);
-		}
-		// increment v if rendering is enabled
-		else if (x == SCREEN_W && rendering_enabled && y >= 0)
-			increment_vertical_scroll ();
-
-		// goto loop;
-		return; // we are done for this cycle
-	}
-
-	if (x == 0)
-	{
-		// start of visual screen
-		if (y == 0)
-		{
-			ppu_registers[PPUSTATUS] &= ~(VBLANK | SPRITE_ZERO_HIT | SPRITE_OVERFLOW); // clear vblank and sprite #0 hit
-			if (rendering_enabled)
-				v = t; // copy t
-		}
-		else if (rendering_enabled)
-		{
-			v = (v & ~0x041F) | (t & 0x041F); // copy X
-			sprite_evaluation (y);
-		}
-	}
-	// increment v horizontally
-	else if (x % 8 == 0 && rendering_enabled && y != 0)
-		increment_horizontal_scroll ();
-
-	// else if (x == SCREEN_W)
-	// {
-	// 	if (rendering_enabled && y >= 0)
-	// 		sprite_evaluation ();
-	// }
-
-	// compute pixel if rendering is enabled
-	if (rendering_enabled)
-		render_pixel (x, y);
-
-	if (x == SCREEN_W - 1 && y == SCREEN_H - 1)
-		render ();
-
-// loop:
-
-}
-
-
-//
-void nes_ppu_render (int) __attribute__ ((deprecated));
-void nes_ppu_render (int pixels)
-{
-	uint8_t sprite_pixel, bg_pixel,
-	        sprite_clr, bg_color;
-
-	int x, y;
-	int stop = 0;
-	int rendering_enabled = (ppu_registers[PPUMASK] & 0x18) != 0;
-
-	render_buf += pixels;
-	for ( ; render_buf > 0 && stop == 0; render_buf --)
-	{
-		x = ppucc % PPUCC_PER_SCANLINE;
-		y = ppucc / PPUCC_PER_SCANLINE - BLANK_SCANLINES;
-
-		// HBLANK or VBLANK
-		if (y < 0 || x >= SCREEN_W)
-		{
-			if (x == 0 && y == -BLANK_SCANLINES + 2)
-			{
-				ppu_registers[PPUSTATUS] |= VBLANK;
-				if (ppu_registers[PPUCTRL] & GENERATE_NMI)
-					nes_cpu_signal (NMI);
-				stop = 1;
-			}
-			// increment v if rendering is enabled
-			else if (x == SCREEN_W && rendering_enabled)
-				increment_vertical_scroll ();
-
-			goto loop;
-		}
-
-		if (x == 0)
-		{
-			// start of visual screen
-			if (y == 0)
-			{
-				render ();
-				if (rendering_enabled)
-					v = t;
-				ppu_registers[PPUSTATUS] &= ~(VBLANK | SPRITE_ZERO_HIT | SPRITE_OVERFLOW);
-				stop = 1;
-				// goto loop;
-			}
-			else if (rendering_enabled)
-				v = (v & ~0x041F) | (t & 0x041F);
-
-			sprite_evaluation (y);
-		}
-		// increment v horizontally
-		else if (x % 8 == 0 && rendering_enabled && y != 0)
-			increment_horizontal_scroll ();
-
-		// no point continuing the iteration from here if rendering is disabled
-		if (!rendering_enabled)
-			goto loop;
-
-		bg_pixel = sprite_pixel = 0;
-
-		// background
-		if (!((ppu_registers[PPUMASK] & 0x08) == 0 || ((ppu_registers[PPUMASK] & 0x02) == 0 && y < 8 && x < 8)))
-		{
-			bg_color = background_color (&bg_pixel);
-			if (bg_pixel != 0)
-				set_pixel_color (x, y, bg_color);
-		}
-		// sprites
-		if (!((ppu_registers[PPUMASK] & 0x10) == 0 || ((ppu_registers[PPUMASK] & 0x4) == 0 && y < 8 && x < 8)))
-		{
-			uint8_t *sprite;
-			int      j, x_off, y_off;
-			uint8_t  tmp;
-			for (int i = 0; i < SECONDARY_OAM_SIZE && sprite_pixel == 0; i ++)
-			{
-				if (secondary_oam[i] == 0xFF)
-					break;
-
-				j  = secondary_oam[i];
-				sprite = primary_oam + j * 4;
-
-				if (!(sprite[3] <= x && x - sprite[3] < 8))
-					continue;
-
-				x_off = x - sprite[3];
-				y_off = y - sprite[0];
-
-				sprite_color (j, x_off, y_off, &tmp, &sprite_clr);
-				// sprite found
-				if (tmp != 0)
-				{
-					if (bg_pixel != 0)
-					{
-						if (j == 0)
-							ppu_registers[PPUSTATUS] |= SPRITE_ZERO_HIT;
-						// bg priority
-						if ((sprite[2] & 0x20) == 0x20)
-							continue;
-					}
-					sprite_pixel = tmp;
-					set_pixel_color (x, y, sprite_clr);
-				}
-			}
-		}
-		// copy backdrop color
-		if (bg_pixel == 0 && sprite_pixel == 0)
-			set_pixel_color (x, y, vram[0x3F00]);
-
-		loop:
-		ppucc ++;
-		ppucc %= PPUCC_PER_FRAME;
-	}
-}
-// */
 
 void nes_ppu_load_vram (void *data)
 {
