@@ -84,22 +84,6 @@ static int signals;
 
 #define MAX_EVENT_HANDLERS 16
 
-/**
-*  typedef for read event handler.
-*  takes an address and pointer to a value to set.
-*  returns 1 or 0 depending on if we should prevent propagation
-*/
-typedef int (*read_handler) (uint16_t address, uint8_t *value) ;
-static read_handler read_handlers[MAX_EVENT_HANDLERS];
-
-/**
-*  typedef function for store event handler.
-*  takes an address and value we are trying to store at it.
-*  returns 1 or 0 incase we should stop propagation.
-*/
-typedef int (*store_handler) (uint16_t address, uint8_t value) ;
-static store_handler store_handlers[MAX_EVENT_HANDLERS];
-
 
 /**
 *  CPU registers
@@ -419,19 +403,62 @@ static void branch (int8_t offset)
 	pc = _pc;
 }
 
+
+/* Store Handlers --------------------------------------------------------------------------------------------------- */
+
 /**
-*  Read a value from the memory.
-*  Loop through all read event handlers before returning the value.
+*  typedef function for store event handler.
+*  takes an address and value we are trying to store at it.
+*  returns 1 or 0 incase we should stop propagation.
 */
-static uint8_t mem_read (uint16_t address)
+typedef int (*store_handler) (uint16_t address, uint8_t value) ;
+static store_handler store_handlers[MAX_EVENT_HANDLERS];
+
+/**
+*  Store event handler for when we are modifying PPU registers.
+*  Will always return 0 (OK).
+*/
+static int on_ppu_modified (uint16_t address, uint8_t value)
 {
-	uint8_t b = memory[address];
-	// loop through read event handlers
-	for (read_handler* handle = read_handlers; *handle != NULL; handle ++)
-		if ((*handle)(address, &b) == 1)
-			break;
-	return b;
+	if (address >= PPU_REGISTER_MEM_LOC && address < PPU_REGISTER_MEM_LOC + 0x2000)
+	{
+		nes_ppu_register_write (address % 8, value);
+		// return 1;
+	}
+	return 0;
 }
+
+/**
+*  Store event handler for when writing to OAM_DMA register.
+*  Always returns 0 (OK).
+*/
+static int on_dma_write (uint16_t address, uint8_t value)
+{
+	if (address == OAM_DMA_REGISTER)
+	{
+		nes_ppu_load_oam_data (memory + value * 0x100);
+		cpucc += 513 + (cpucc & 1);
+	}
+	return 0;
+}
+
+/**
+*  Event handler for writes to one of the controller ports.
+*  Will stop propagation if the address is one of the controller ports.
+*/
+static int on_controller_port_write (uint16_t address, uint8_t value)
+{
+	int ret = 0;
+	if (address == CTRL_ONE_MEM_LOC || address == CTRL_TWO_MEM_LOC)
+	{
+		nes_io_controller_port_write ((enum nes_io_controller_port) (address % 2), value);
+		ret = 1;
+	}
+	return ret;
+}
+
+/* End Store Handlers ----------------------------------------------------------------------------------------------- */
+
 
 /**
 *  Store value to memory.
@@ -460,6 +487,115 @@ static void mem_store (uint8_t value, uint16_t address)
 		for (int i = PPU_REGISTER_MEM_LOC + address % 8; i < PPU_REGISTER_MEM_LOC + 0x2000; i += 8)
 			memory[i] = value;
 	}
+}
+
+
+/* Read Handlers ---------------------------------------------------------------------------------------------------- */
+
+/**
+*  typedef for read event handler.
+*  takes an address and pointer to a value to set.
+*  returns 1 or 0 depending on if we should prevent propagation
+*/
+typedef int (*read_handler) (uint16_t address, uint8_t *value) ;
+static read_handler read_handlers[MAX_EVENT_HANDLERS];
+
+/* Read from PPU register */
+static int on_ppu_register_read (uint16_t address, uint8_t *value)
+{
+	int ret = 0;
+	if (address >= PPU_REGISTER_MEM_LOC && address < PPU_REGISTER_MEM_LOC + 0x2000)
+	{
+		int reg = address % 8;
+		*value = nes_ppu_register_read (reg);
+		// ret = 1;
+		switch (reg)
+		{
+			// these we know return special values in the PPU
+			// and have special callbacks that need to be called.
+			case PPUSTATUS:
+			case PPUDATA:
+			case OAMDATA:
+			ret = 1;
+			break;
+		}
+	}
+	return ret;
+}
+
+/**
+*   Event handler for reading one of the controller ports.
+*   Will stop propagation if the address is one of the address ports.
+*/
+static int on_controller_port_read (uint16_t address, uint8_t *value)
+{
+	int ret = 0;
+	if (address == CTRL_ONE_MEM_LOC || address == CTRL_TWO_MEM_LOC)
+	{
+		*value = nes_io_controller_port_read ((enum nes_io_controller_port) (address % 2));
+		ret = 1;
+	}
+	return ret;
+}
+
+/* End Read Handlers ------------------------------------------------------------------------------------------------ */
+
+
+/**
+*  Read a value from the memory.
+*  Loop through all read event handlers before returning the value.
+*/
+static uint8_t mem_read (uint16_t address)
+{
+	uint8_t b = memory[address];
+	// loop through read event handlers
+	for (read_handler* handle = read_handlers; *handle != NULL; handle ++)
+		if ((*handle)(address, &b) == 1)
+			break;
+	return b;
+}
+
+/**
+*  Init the CPU to its startup state.
+*/
+void nes_cpu_init ()
+{
+	// default values of registers
+	a   = 0;
+	x   = 0;
+	y   = 0;
+	sp  = 0xFD;
+	ps  = 0x24;
+
+	// init memory
+	// memset (memory, 0, PRG_ROM_LOCATION);
+	for (int i = 0; i < 0x800; i ++)
+		memory[i] = 0xFF;
+	memory[0x0008] = 0xF7;
+	memory[0x0009] = 0xEF;
+	memory[0x000A] = 0xDF;
+	memory[0x000F] = 0xBF;
+	// memory[0x4015] = 0xF7;
+	// memory[0x4017] = 0xF7;
+
+	flags = 0;
+	cpucc = 0;
+
+	// load program counter
+	pc = memory[RST_VECTOR + 1];
+	pc = pc << 8 | memory[RST_VECTOR];
+
+	memset (store_handlers, 0, MAX_EVENT_HANDLERS * sizeof (store_handler));
+	memset (read_handlers,  0, MAX_EVENT_HANDLERS * sizeof (read_handler));
+
+	// register store event handlers
+	store_handlers[0] = &on_ppu_modified;
+	store_handlers[1] = &on_dma_write;
+	store_handlers[2] = &on_controller_port_write;
+
+	// register read event handlers
+	read_handlers[0]  = &on_ppu_register_read;
+	read_handlers[1]  = &on_controller_port_read;
 }
 
 /**
@@ -509,126 +645,6 @@ static inline void set_flags (uint8_t value, uint8_t flags)
 		ps |= NEGATIVE;
 }
 
-/**
-*  Store event handler for when we are modifying PPU registers.
-*  Will always return 0 (OK).
-*/
-static int on_ppu_modified (uint16_t address, uint8_t value)
-{
-	if (address >= PPU_REGISTER_MEM_LOC && address < PPU_REGISTER_MEM_LOC + 0x2000)
-		nes_ppu_register_write (address % 8, value);
-	return 0;
-}
-
-/**
-*  Store event handler for when writing to OAM_DMA register.
-*  Always returns 0 (OK).
-*/
-static int on_dma_write (uint16_t address, uint8_t value)
-{
-	if (address == OAM_DMA_REGISTER)
-	{
-		nes_ppu_load_oam_data (memory + value * 0x100);
-		cpucc += 513 + (cpucc & 1);
-	}
-	return 0;
-}
-
-
-static int on_ppu_register_read (uint16_t address, uint8_t *value)
-{
-	int ret = 0;
-	if (address >= PPU_REGISTER_MEM_LOC && address < PPU_REGISTER_MEM_LOC + 0x2000)
-	{
-		int reg = address % 8;
-		*value = nes_ppu_register_read (reg);
-		switch (reg)
-		{
-			// these we know return special values in the PPU
-			// and have special callbacks that need to be called.
-			case PPUSTATUS:
-			case PPUDATA:
-			case OAMDATA:
-			ret = 1;
-			break;
-		}
-	}
-	return ret;
-}
-
-/**
-*   Event handler for reading one of the controller ports.
-*   Will stop propagation if the address is one of the address ports.
-*/
-static int on_controller_port_read (uint16_t address, uint8_t *value)
-{
-	int ret = 0;
-	if (address == CTRL_ONE_MEM_LOC || address == CTRL_TWO_MEM_LOC)
-	{
-		*value = nes_io_controller_port_read ((enum nes_io_controller_port) (address % 2));
-		ret = 1;
-	}
-	return ret;
-}
-
-/**
-*  Event handler for writes to one of the controller ports.
-*  Will stop propagation if the address is one of the controller ports.
-*/
-static int on_controller_port_write (uint16_t address, uint8_t value)
-{
-	int ret = 0;
-	if (address == CTRL_ONE_MEM_LOC || address == CTRL_TWO_MEM_LOC)
-	{
-		nes_io_controller_port_write ((enum nes_io_controller_port) (address % 2), value);
-		ret = 1;
-	}
-	return ret;
-}
-
-/**
-*  Init the CPU to its startup state.
-*/
-void nes_cpu_init ()
-{
-	// default values of registers
-	a   = 0;
-	x   = 0;
-	y   = 0;
-	sp  = 0xFD;
-	ps  = 0x24;
-
-	// init memory
-	// memset (memory, 0, PRG_ROM_LOCATION);
-	for (int i = 0; i < 0x800; i ++)
-		memory[i] = 0xFF;
-	memory[0x0008] = 0xF7;
-	memory[0x0009] = 0xEF;
-	memory[0x000A] = 0xDF;
-	memory[0x000F] = 0xBF;
-	// memory[0x4015] = 0xF7;
-	// memory[0x4017] = 0xF7;
-
-	flags = 0;
-	cpucc = 0;
-
-	// load program counter
-	pc = memory[RST_VECTOR + 1];
-	pc = pc << 8 | memory[RST_VECTOR];
-
-	memset (store_handlers, 0, MAX_EVENT_HANDLERS * sizeof (store_handler));
-	memset (read_handlers,  0, MAX_EVENT_HANDLERS * sizeof (read_handler));
-
-	// register store event handlers
-	store_handlers[0] = &on_ppu_modified;
-	store_handlers[1] = &on_dma_write;
-	store_handlers[2] = &on_controller_port_write;
-
-	// register read event handlers
-	read_handlers[0]  = &on_ppu_register_read;
-	read_handlers[1]  = &on_controller_port_read;
-}
-
 
 /** -----------------------------------------------------------------------------------
 * CPU INSTRUCTIONS  *
@@ -636,8 +652,7 @@ void nes_cpu_init ()
 
 /**
 *  CPU Instruction.
-*  Has a name (for debugging purposes) and a pointer to a
-*  function which to run.
+*  Has a name (for debugging purposes) and a pointer to a function which to run.
 */
 typedef struct instruction
 {
@@ -1286,8 +1301,7 @@ static const instruction unknown_instruction = { "[*]", &nop };
 /**
 *  CPU Operation.
 *  Points to a CPU instruction with preset addressing mode.
-*  Already knows the number of bytes and cycles (-ich) that the instruction
-*  will consume.
+*  Already knows the number of bytes and cycles (-ich) that the instruction will consume.
 */
 typedef struct operation
 {
@@ -1300,8 +1314,7 @@ typedef struct operation
 operation;
 
 /**
-*  Execute an operation setting the number of bytes and the number
-*  of cycles the operation consumed.
+*  Execute an operation setting the number of bytes and the number of cycles the operation consumed.
 */
 static void operation_exec (operation *op)
 {
@@ -1313,7 +1326,7 @@ static void operation_exec (operation *op)
 	// add extra cycles in case of page cross
 	if (flags & PAGE_CROSS)
 		cpucc += op->cc_page_cross;
-		
+
 	flags &= ~PAGE_CROSS; // reset page cross flag
 }
 
