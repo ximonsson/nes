@@ -505,19 +505,18 @@ static void sprite_evaluation (int scanline)
 	}
 }
 
+#define RENDERING_ENABLED (ppu_registers[PPUMASK] & 0x18)
+
 /**
  *  tick makes the PPU turn one cycle, and making any status updates by doing so.
  */
 static void inline tick ()
 {
-	// compute if rendering is enabled
-	int rendering_enabled = (ppu_registers[PPUMASK] & 0x18) != 0;
-
 	// compute scanline and dot we are currently rendering
 	int scanln = ppucc / PPUCC_PER_SCANLINE;
 	int dot = ppucc % PPUCC_PER_SCANLINE;
 
-	if ((flags & odd_frame) && rendering_enabled && scanln == SCANLINES_PER_FRAME - 1 && dot == PPUCC_PER_SCANLINE - 2)
+	if ((flags & odd_frame) && RENDERING_ENABLED && scanln == SCANLINES_PER_FRAME - 1 && dot == PPUCC_PER_SCANLINE - 2)
 	{
 		// If we are rendering, odd frames are one cycle shorter. This is done by skipping the last cycle of the frame.
 		ppucc ++;
@@ -538,9 +537,6 @@ void nes_ppu_step ()
 {
 	tick (); // go forward one cycle
 
-	// compute if rendering is enabled
-	int rendering_enabled = (ppu_registers[PPUMASK] & 0x18) != 0;
-
 	int scanln = ppucc / PPUCC_PER_SCANLINE;
 	int pre_scanln = scanln == (SCANLINES_PER_FRAME - 1); // line 261
 	int visible_scanln = scanln < SCREEN_H;               // lines 0 -> 239
@@ -548,7 +544,7 @@ void nes_ppu_step ()
 	int dot = ppucc % PPUCC_PER_SCANLINE;
 	int visible_dot = dot >= 1 && dot <= SCREEN_W; // dot 1 -> 256, remember: first dot is idle
 
-	if (rendering_enabled)
+	if (RENDERING_ENABLED)
 	{
 		if (visible_dot && visible_scanln)
 			render_pixel (dot - 1, scanln); // render pixel to screen
