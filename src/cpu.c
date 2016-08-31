@@ -119,10 +119,47 @@ static uint8_t  sp;
 
 // CPU Clock Counter
 static int cpucc;
+
 // Memory
 static uint8_t memory[MEMORY_SIZE];
 
 
+void __memory__ (void **p, int location)
+{
+	*p = memory + location;
+}
+
+/**
+*  Set signal in CPU.
+*/
+void nes_cpu_signal (enum nes_cpu_signal sig)
+{
+	signals |= sig;
+}
+
+/**
+*  Load PRG ROM data to bank.
+*/
+void nes_cpu_load_prg_rom_bank (void *data, int bank)
+{
+	memcpy
+	(
+		memory + PRG_ROM_LOCATION + bank * NES_PRG_ROM_BANK_SIZE,
+		data,
+		NES_PRG_ROM_BANK_SIZE
+	);
+}
+
+
+void nes_cpu_load_prg_rom (void *data)
+{
+	memcpy
+	(
+		memory + PRG_ROM_LOCATION,
+		data,
+		NES_PRG_ROM_SIZE
+	);
+}
 
 
 /** ----------------------------------------------------------------------------------------------
@@ -537,6 +574,49 @@ static int on_controller_port_write (uint16_t address, uint8_t value)
 		ret = 1;
 	}
 	return ret;
+}
+
+/**
+*  Init the CPU to its startup state.
+*/
+void nes_cpu_init ()
+{
+	// default values of registers
+	a   = 0;
+	x   = 0;
+	y   = 0;
+	sp  = 0xFD;
+	ps  = 0x24;
+
+	// init memory
+	// memset (memory, 0, PRG_ROM_LOCATION);
+	for (int i = 0; i < 0x800; i ++)
+		memory[i] = 0xFF;
+	memory[0x0008] = 0xF7;
+	memory[0x0009] = 0xEF;
+	memory[0x000A] = 0xDF;
+	memory[0x000F] = 0xBF;
+	// memory[0x4015] = 0xF7;
+	// memory[0x4017] = 0xF7;
+
+	flags = 0;
+	cpucc = 0;
+
+	// load program counter
+	pc = memory[RST_VECTOR + 1];
+	pc = pc << 8 | memory[RST_VECTOR];
+
+	memset (store_handlers, 0, MAX_EVENT_HANDLERS * sizeof (store_handler));
+	memset (read_handlers,  0, MAX_EVENT_HANDLERS * sizeof (read_handler));
+
+	// register store event handlers
+	store_handlers[0] = &on_ppu_modified;
+	store_handlers[1] = &on_dma_write;
+	store_handlers[2] = &on_controller_port_write;
+
+	// register read event handlers
+	read_handlers[0]  = &on_ppu_register_read;
+	read_handlers[1]  = &on_controller_port_read;
 }
 
 
@@ -1324,89 +1404,6 @@ static operation operations[16][16] =
 #undef illegal_operation
 
 /* end CPU INSTRUCTIONS --------------------------------------------------------------- */
-
-
-void __memory__ (void **p, int location)
-{
-	*p = memory + location;
-}
-
-/**
-*  Set signal in CPU.
-*/
-void nes_cpu_signal (enum nes_cpu_signal sig)
-{
-	signals |= sig;
-}
-
-
-/**
-*  Load PRG ROM data to bank.
-*/
-void nes_cpu_load_prg_rom_bank (void *data, int bank)
-{
-	memcpy
-	(
-		memory + PRG_ROM_LOCATION + bank * NES_PRG_ROM_BANK_SIZE,
-		data,
-		NES_PRG_ROM_BANK_SIZE
-	);
-}
-
-
-void nes_cpu_load_prg_rom (void *data)
-{
-	memcpy
-	(
-		memory + PRG_ROM_LOCATION,
-		data,
-		NES_PRG_ROM_SIZE
-	);
-}
-
-
-/**
-*  Init the CPU to its startup state.
-*/
-void nes_cpu_init ()
-{
-	// default values of registers
-	a   = 0;
-	x   = 0;
-	y   = 0;
-	sp  = 0xFD;
-	ps  = 0x24;
-
-	// init memory
-	// memset (memory, 0, PRG_ROM_LOCATION);
-	for (int i = 0; i < 0x800; i ++)
-		memory[i] = 0xFF;
-	memory[0x0008] = 0xF7;
-	memory[0x0009] = 0xEF;
-	memory[0x000A] = 0xDF;
-	memory[0x000F] = 0xBF;
-	// memory[0x4015] = 0xF7;
-	// memory[0x4017] = 0xF7;
-
-	flags = 0;
-	cpucc = 0;
-
-	// load program counter
-	pc = memory[RST_VECTOR + 1];
-	pc = pc << 8 | memory[RST_VECTOR];
-
-	memset (store_handlers, 0, MAX_EVENT_HANDLERS * sizeof (store_handler));
-	memset (read_handlers,  0, MAX_EVENT_HANDLERS * sizeof (read_handler));
-
-	// register store event handlers
-	store_handlers[0] = &on_ppu_modified;
-	store_handlers[1] = &on_dma_write;
-	store_handlers[2] = &on_controller_port_write;
-
-	// register read event handlers
-	read_handlers[0]  = &on_ppu_register_read;
-	read_handlers[1]  = &on_controller_port_read;
-}
 
 
 /**
