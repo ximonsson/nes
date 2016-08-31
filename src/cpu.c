@@ -29,6 +29,9 @@
 
 #define MEMORY_SIZE         (65 << 10)
 
+/* DIFF_PAGE returns true or false depending on if x and y are on different pages */
+#define DIFF_PAGE(x, y) ((x & 0xFF00) != (y & 0xFF00))
+
 
 /**
 *  Processor Status Flags
@@ -185,8 +188,8 @@ static uint16_t indirect ()
 
 static uint16_t indexed_indirect ()
 {
-	uint8_t  l    = memory[pc] + x;
-	uint8_t  h    = l + 1;
+	uint8_t l = memory[pc] + x;
+	uint8_t h = l + 1;
 	uint16_t addr = memory[h];
 	addr = addr << 8 | memory[l];
 
@@ -196,8 +199,8 @@ static uint16_t indexed_indirect ()
 
 static uint16_t indirect_indexed ()
 {
-	uint8_t  l    = memory[pc];
-	uint8_t  h    = l + 1;
+	uint8_t l = memory[pc];
+	uint8_t h = l + 1;
 	uint16_t addr = memory[h];
 	addr = (addr << 8 | memory[l]) + y;
 	return addr;
@@ -334,9 +337,6 @@ static void (*address_calculators_string[13])(char *) =
 static uint16_t calculate_address (addressing_mode mode)
 {
 	uint16_t addr = (*address_calculators[mode])();
-	// set page cross flag if we crossing pages
-	if ((addr & 0xFF00) != (pc && 0xFF00)) // TODO this is not set for all instructions i thinkz
-		flags |= PAGE_CROSS;
 	return addr;
 }
 
@@ -367,12 +367,9 @@ static uint8_t pop ()
 static void branch (int8_t offset)
 {
 	uint16_t _pc = pc + offset;
-	// int new_page = pc / PAGE_SIZE != (_pc + 2) / PAGE_SIZE;
-	int new_page = (pc & 0xFF00) != (_pc & 0xFF00);
-	pc = _pc;
-	if (new_page)
+	if (DIFF_PAGE (pc, _pc))
 		cpucc ++;
-	// return new_page;
+	pc = _pc;
 }
 
 /**
@@ -419,15 +416,18 @@ static void mem_store (uint8_t value, uint16_t address)
 }
 
 /**
-*  Handle interrupt.
-*  Do the necessary pushing to stack and jump to the new
-*  program counter.
-*/
+ *  Handle interrupt.
+ *  Does the necessary pushing to stack and jump to the new program counter.
+ *  An interrupt takes 7 cycles to perform.
+ */
 static inline void interrupt (uint16_t _pc)
 {
-	push (pc >> 8);
-	push (pc);
+	// push PC
+	push (pc >> 8); // high
+	push (pc);      // low
+	// push PS
 	push (ps);
+	// set new PC
 	pc = _pc;
 	ps |= INTERRUPT; // disable interrupt
 	cpucc += 7;
@@ -555,45 +555,6 @@ typedef struct instruction
 	void (*exec) (addressing_mode);
 }
 instruction;
-
-/**
-*  CPU Operation.
-*  Points to a CPU instruction with preset addressing mode.
-*  Already knows the number of bytes and cycles (-ich) that the instruction
-*  will consume.
-*/
-typedef struct operation
-{
-	const instruction*  instr;
-	addressing_mode     mode;
-	uint16_t            bytes;
-	int                 cycles;
-}
-operation;
-
-/**
-*  Execute an operation setting the number of bytes and the number
-*  of cycles the operation consumed.
-*/
-static void operation_exec (operation *op)
-{
-	flags &= ~PAGE_CROSS;
-	op->instr->exec (op->mode);
-	cpucc += op->cycles;
-	pc += op->bytes;
-	// det ska vara något special ifall vi har en viss addressing mode och om det var page cross.
-	// förra lösningen var inge vidare snygg, så vänta med denna.
-}
-
-#ifdef VERBOSE
-	static void operation_to_string (operation *op, char *dest)
-	{
-		pc ++;
-		sprintf (dest, "%s ", op->instr->name);
-		address_calculators_string[op->mode](dest + 4);
-		pc --;
-	}
-#endif
 
 // Add With Carry
 static void adc (addressing_mode mode)
@@ -747,14 +708,9 @@ static const instruction BPL = { "BPL", &bpl };
 static void brk (addressing_mode mode)
 {
 	ps |= BREAK;
-	// push program counter and processor status
-	// push (byte (pc & 0xFF00 >> 8))
-	// push (byte (pc))
-	// push (ps)
-	interrupt (0);
-
-	// fattar inte riktigt allt som ska göras här....
-	// @TODO mer research om detta
+	uint16_t irq_vector = memory[IRQ_VECTOR + 1];
+	irq_vector = irq_vector << 8 | memory[IRQ_VECTOR];
+	interrupt (irq_vector);
 }
 static const instruction BRK = { "BRK", &brk };
 
@@ -1235,6 +1191,45 @@ static const instruction TYA = { "TYA", &tya };
 
 // Illegal operation
 static const instruction unknown_instruction = { "[*]", &nop };
+
+
+/**
+*  CPU Operation.
+*  Points to a CPU instruction with preset addressing mode.
+*  Already knows the number of bytes and cycles (-ich) that the instruction
+*  will consume.
+*/
+typedef struct operation
+{
+	const instruction*  instr;
+	addressing_mode     mode;
+	uint16_t            bytes;
+	int                 cycles;
+}
+operation;
+
+/**
+*  Execute an operation setting the number of bytes and the number
+*  of cycles the operation consumed.
+*/
+static void operation_exec (operation *op)
+{
+	flags &= ~PAGE_CROSS;
+	op->instr->exec (op->mode);
+	cpucc += op->cycles;
+	pc += op->bytes;
+}
+
+#ifdef VERBOSE
+	static void operation_to_string (operation *op, char *dest)
+	{
+		pc ++;
+		sprintf (dest, "%s ", op->instr->name);
+		address_calculators_string[op->mode](dest + 4);
+		pc --;
+	}
+#endif
+
 #define illegal_operation \
 {\
 	&unknown_instruction,\
@@ -1380,7 +1375,7 @@ void nes_cpu_init ()
 	x   = 0;
 	y   = 0;
 	sp  = 0xFD;
-	ps  = 0x34;
+	ps  = 0x24;
 
 	// init memory
 	// memset (memory, 0, PRG_ROM_LOCATION);
@@ -1460,6 +1455,13 @@ int nes_cpu_step ()
 {
 	int cc = cpucc;
 
+	// check interrupts
+	if (signals & NMI)
+		nmi ();
+	else if (signals & IRQ)
+		irq ();
+	signals = 0;
+
 	// get operation
 	uint8_t opcode = memory[pc];
 	operation* op = &operations[opcode >> 4 & 0xF][opcode & 0xF];
@@ -1475,14 +1477,6 @@ int nes_cpu_step ()
 	#ifdef VERBOSE
 		printf ("\n");
 	#endif
-
-	// check interrupts
-	if (signals & NMI)
-		nmi ();
-	else if (signals & IRQ)
-		irq ();
-	signals = 0;
-
 
 	cc = cpucc - cc;
 	int cpucc_per_frame = SCANLINES_PER_FRAME * PPUCC_PER_SCANLINE / PPU_CC_PER_CPU_CC + 1;
