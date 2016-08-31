@@ -196,13 +196,19 @@ static uint16_t absolute ()
 
 static uint16_t absolute_x ()
 {
-	return absolute () + x;
+	uint16_t addr = absolute () + x;
+	if (DIFF_PAGE (addr, pc))
+		flags |= PAGE_CROSS;
+	return addr;
 }
 
 
 static uint16_t absolute_y ()
 {
-	return absolute () + y;
+	uint16_t addr = absolute () + y;
+	if (DIFF_PAGE (addr, pc))
+		flags |= PAGE_CROSS;
+	return addr;
 }
 
 
@@ -240,6 +246,10 @@ static uint16_t indirect_indexed ()
 	uint8_t h = l + 1;
 	uint16_t addr = memory[h];
 	addr = (addr << 8 | memory[l]) + y;
+
+	if (DIFF_PAGE (addr, pc))
+		flags |= PAGE_CROSS;
+
 	return addr;
 }
 
@@ -1285,6 +1295,7 @@ typedef struct operation
 	addressing_mode     mode;
 	uint16_t            bytes;
 	int                 cycles;
+	int                 cc_page_cross;
 }
 operation;
 
@@ -1294,10 +1305,16 @@ operation;
 */
 static void operation_exec (operation *op)
 {
-	flags &= ~PAGE_CROSS;
+	// execute instruction
 	op->instr->exec (op->mode);
-	cpucc += op->cycles;
+	// increment PC and CPUCC
 	pc += op->bytes;
+	cpucc += op->cycles;
+	// add extra cycles in case of page cross
+	if (flags & PAGE_CROSS)
+		cpucc += op->cc_page_cross;
+		
+	flags &= ~PAGE_CROSS; // reset page cross flag
 }
 
 #ifdef VERBOSE
@@ -1315,90 +1332,91 @@ static void operation_exec (operation *op)
 	&unknown_instruction,\
 	IMPLICIT,\
 	0,\
+	0,\
 	0\
 }
 // opcode to operation map
 static operation operations[16][16] =
 {
-	{{&BRK, IMPLICIT, 0, 7},      {&ORA, INDEXED_INDIRECT, 1, 6},    illegal_operation,            illegal_operation,
-	illegal_operation,            {&ORA, ZERO_PAGE, 1, 3},           {&ASL, ZERO_PAGE, 1, 5},      illegal_operation,
-	{&PHP, IMPLICIT, 0, 3},       {&ORA, IMMEDIATE, 1, 2},           {&ASL, ACCUMULATOR, 0, 2},    illegal_operation,
-	illegal_operation,            {&ORA, ABSOLUTE, 2, 4},            {&ASL, ABSOLUTE, 2, 6},       illegal_operation},
+	{{&BRK, IMPLICIT, 0, 7, 0},    {&ORA, INDEXED_INDIRECT, 1, 6, 0},  illegal_operation,           illegal_operation,
+	 illegal_operation,            {&ORA, ZERO_PAGE,        1, 3, 0}, {&ASL, ZERO_PAGE,   1, 5, 0}, illegal_operation,
+	 {&PHP, IMPLICIT, 0, 3, 0},    {&ORA, IMMEDIATE,        1, 2, 0}, {&ASL, ACCUMULATOR, 0, 2, 0}, illegal_operation,
+	 illegal_operation,            {&ORA, ABSOLUTE,         2, 4, 0}, {&ASL, ABSOLUTE,    2, 6, 0}, illegal_operation},
 	// 0x1
-	{{&BPL, RELATIVE, 1, 2},      {&ORA, INDIRECT_INDEXED, 1, 5},    illegal_operation,            illegal_operation,
-	illegal_operation,            {&ORA, ZERO_PAGE_X, 1, 4},         {&ASL, ZERO_PAGE_X, 1, 6},    illegal_operation,
-	{&CLC, IMPLICIT, 0, 2},       {&ORA, ABSOLUTE_Y, 2, 4},          illegal_operation,            illegal_operation,
-	illegal_operation,            {&ORA, ABSOLUTE_X, 2, 4},          {&ASL, ABSOLUTE_X, 2, 7},     illegal_operation},
+	{{&BPL, RELATIVE, 1, 2, 0},    {&ORA, INDIRECT_INDEXED, 1, 5, 1}, illegal_operation,            illegal_operation,
+	 illegal_operation,            {&ORA, ZERO_PAGE_X,      1, 4, 0}, {&ASL, ZERO_PAGE_X, 1, 6, 0}, illegal_operation,
+	 {&CLC, IMPLICIT, 0, 2, 0},    {&ORA, ABSOLUTE_Y,       2, 4, 1}, illegal_operation,            illegal_operation,
+	 illegal_operation,            {&ORA, ABSOLUTE_X,       2, 4, 1}, {&ASL, ABSOLUTE_X,  2, 7, 0}, illegal_operation},
 	// 0x2
-	{{&JSR, ABSOLUTE,  0, 6},     {&AND, INDEXED_INDIRECT, 1, 6},    illegal_operation,            illegal_operation,
-	{&BIT, ZERO_PAGE, 1, 3},      {&AND, ZERO_PAGE, 1, 3},           {&ROL, ZERO_PAGE, 1, 5},      illegal_operation,
-	{&PLP, IMPLICIT,  0, 4},      {&AND, IMMEDIATE, 1, 2},           {&ROL, ACCUMULATOR, 0, 2},    illegal_operation,
-	{&BIT, ABSOLUTE,  2, 4},      {&AND, ABSOLUTE,  2, 4},           {&ROL, ABSOLUTE, 2, 6},       illegal_operation},
+	{{&JSR, ABSOLUTE,  0, 6, 0},   {&AND, INDEXED_INDIRECT, 1, 6, 0}, illegal_operation,            illegal_operation,
+	 {&BIT, ZERO_PAGE, 1, 3, 0},   {&AND, ZERO_PAGE,        1, 3, 0}, {&ROL, ZERO_PAGE,   1, 5, 0}, illegal_operation,
+	 {&PLP, IMPLICIT,  0, 4, 0},   {&AND, IMMEDIATE,        1, 2, 0}, {&ROL, ACCUMULATOR, 0, 2, 0}, illegal_operation,
+	 {&BIT, ABSOLUTE,  2, 4, 0},   {&AND, ABSOLUTE,         2, 4, 0}, {&ROL, ABSOLUTE,    2, 6, 0}, illegal_operation},
 	// 0x3
-	{{&BMI, RELATIVE, 1, 2},      {&AND, INDIRECT_INDEXED, 1, 5},    illegal_operation,            illegal_operation,
-	illegal_operation,            {&AND, ZERO_PAGE_X, 1, 4},         {&ROL, ZERO_PAGE_X, 1, 6},    illegal_operation,
-	{&SEC, IMPLICIT, 0, 2},       {&AND, ABSOLUTE_Y, 2, 4},          illegal_operation,            illegal_operation,
-	illegal_operation,            {&AND, ABSOLUTE_X, 2, 4},          {&ROL, ABSOLUTE_X, 2, 7},     illegal_operation},
+	{{&BMI, RELATIVE, 1, 2, 0},    {&AND, INDIRECT_INDEXED, 1, 5, 1}, illegal_operation,            illegal_operation,
+	 illegal_operation,            {&AND, ZERO_PAGE_X,      1, 4, 0}, {&ROL, ZERO_PAGE_X, 1, 6, 0}, illegal_operation,
+	 {&SEC, IMPLICIT, 0, 2, 0},    {&AND, ABSOLUTE_Y,       2, 4, 1}, illegal_operation,            illegal_operation,
+	 illegal_operation,            {&AND, ABSOLUTE_X,       2, 4, 1}, {&ROL, ABSOLUTE_X,  2, 7, 0}, illegal_operation},
 	// 0x4
-	{{&RTI, IMPLICIT, 0, 6},      {&EOR, INDEXED_INDIRECT, 1, 6},    illegal_operation,            illegal_operation,
-	illegal_operation,            {&EOR, ZERO_PAGE, 1, 3},           {&LSR, ZERO_PAGE, 1, 5},      illegal_operation,
-	{&PHA, IMPLICIT, 0, 3},       {&EOR, IMMEDIATE, 1, 2},           {&LSR, ACCUMULATOR, 0, 2},    illegal_operation,
-	{&JMP, ABSOLUTE, 0, 3},       {&EOR, ABSOLUTE, 2, 4},            {&LSR, ABSOLUTE, 2, 6},       illegal_operation},
+	{{&RTI, IMPLICIT, 0, 6, 0},    {&EOR, INDEXED_INDIRECT, 1, 6, 0}, illegal_operation,            illegal_operation,
+	 illegal_operation,            {&EOR, ZERO_PAGE,        1, 3, 0}, {&LSR, ZERO_PAGE,   1, 5, 0}, illegal_operation,
+	 {&PHA, IMPLICIT, 0, 3, 0},    {&EOR, IMMEDIATE,        1, 2, 0}, {&LSR, ACCUMULATOR, 0, 2, 0}, illegal_operation,
+	 {&JMP, ABSOLUTE, 0, 3, 0},    {&EOR, ABSOLUTE,         2, 4, 0}, {&LSR, ABSOLUTE,    2, 6, 0}, illegal_operation},
 	// 0x5
-	{{&BVC, RELATIVE, 1, 2},      {&EOR, INDIRECT_INDEXED, 1, 5},    illegal_operation,            illegal_operation,
-	illegal_operation,            {&EOR, ZERO_PAGE_X, 1, 4},         {&LSR, ZERO_PAGE_X, 1, 6},    illegal_operation,
-	{&CLI, IMPLICIT, 0, 2},       {&EOR, ABSOLUTE_Y, 2, 4},          illegal_operation,            illegal_operation,
-	illegal_operation,            {&EOR, ABSOLUTE_X, 2, 4},          {&LSR, ABSOLUTE_X, 2, 7},     illegal_operation},
+	{{&BVC, RELATIVE, 1, 2, 0},    {&EOR, INDIRECT_INDEXED, 1, 5, 1}, illegal_operation,            illegal_operation,
+	 illegal_operation,            {&EOR, ZERO_PAGE_X,      1, 4, 0}, {&LSR, ZERO_PAGE_X, 1, 6, 0}, illegal_operation,
+	 {&CLI, IMPLICIT, 0, 2, 0},    {&EOR, ABSOLUTE_Y,       2, 4, 1}, illegal_operation,            illegal_operation,
+	 illegal_operation,            {&EOR, ABSOLUTE_X,       2, 4, 1}, {&LSR, ABSOLUTE_X,  2, 7, 0}, illegal_operation},
 	// 0x6
-	{{&RTS, IMPLICIT, 0, 6},      {&ADC, INDEXED_INDIRECT, 1, 5},    illegal_operation,            illegal_operation,
-	illegal_operation,            {&ADC, ZERO_PAGE, 1, 3},           {&ROR, ZERO_PAGE, 1, 5},      illegal_operation,
-	{&PLA, IMPLICIT, 0, 4},       {&ADC, IMMEDIATE, 1, 2},           {&ROR, ACCUMULATOR, 0, 2},    illegal_operation,
-	{&JMP, INDIRECT, 0, 5},       {&ADC, ABSOLUTE, 2, 4},            {&ROR, ABSOLUTE, 2, 6},       illegal_operation},
+	{{&RTS, IMPLICIT, 0, 6, 0},    {&ADC, INDEXED_INDIRECT, 1, 5, 0}, illegal_operation,            illegal_operation,
+	 illegal_operation,            {&ADC, ZERO_PAGE,        1, 3, 0}, {&ROR, ZERO_PAGE,   1, 5, 0}, illegal_operation,
+	 {&PLA, IMPLICIT, 0, 4, 0},    {&ADC, IMMEDIATE,        1, 2, 0}, {&ROR, ACCUMULATOR, 0, 2, 0}, illegal_operation,
+	 {&JMP, INDIRECT, 0, 5, 0},    {&ADC, ABSOLUTE,         2, 4, 0}, {&ROR, ABSOLUTE,    2, 6, 0}, illegal_operation},
 	// 0x7
-	{{&BVS, RELATIVE, 1, 2},      {&ADC, INDIRECT_INDEXED, 1, 4},    illegal_operation,            illegal_operation,
-	illegal_operation,            {&ADC, ZERO_PAGE_X, 1, 4},         {&ROR, ZERO_PAGE_X, 1, 6},    illegal_operation,
-	{&SEI, IMPLICIT, 0, 2},       {&ADC, ABSOLUTE_Y, 2, 4},          illegal_operation,            illegal_operation,
-	illegal_operation,            {&ADC, ABSOLUTE_X, 2, 4},          {&ROR, ABSOLUTE_X, 2, 7},     illegal_operation},
+	{{&BVS, RELATIVE, 1, 2, 0},    {&ADC, INDIRECT_INDEXED, 1, 4, 1}, illegal_operation,            illegal_operation,
+	 illegal_operation,            {&ADC, ZERO_PAGE_X,      1, 4, 0}, {&ROR, ZERO_PAGE_X, 1, 6, 0}, illegal_operation,
+	 {&SEI, IMPLICIT, 0, 2, 0},    {&ADC, ABSOLUTE_Y,       2, 4, 1}, illegal_operation,            illegal_operation,
+	 illegal_operation,            {&ADC, ABSOLUTE_X,       2, 4, 1}, {&ROR, ABSOLUTE_X,  2, 7, 0}, illegal_operation},
 	// 0x8
-	{illegal_operation,           {&STA, INDEXED_INDIRECT, 1, 6},    illegal_operation,            illegal_operation,
-	{&STY, ZERO_PAGE, 1, 3},      {&STA, ZERO_PAGE, 1, 3},           {&STX, ZERO_PAGE, 1, 3},      illegal_operation,
-	{&DEY, IMPLICIT, 0, 2},       illegal_operation,                 {&TXA, IMPLICIT, 0, 2},       illegal_operation,
-	{&STY, ABSOLUTE, 2, 4},       {&STA, ABSOLUTE, 2, 4},            {&STX, ABSOLUTE, 2, 4},       illegal_operation},
+	{illegal_operation,            {&STA, INDEXED_INDIRECT, 1, 6, 0}, illegal_operation,            illegal_operation,
+	 {&STY, ZERO_PAGE, 1, 3, 0},   {&STA, ZERO_PAGE,        1, 3, 0}, {&STX, ZERO_PAGE,   1, 3, 0}, illegal_operation,
+	 {&DEY, IMPLICIT,  0, 2, 0},    illegal_operation,                {&TXA, IMPLICIT,    0, 2, 0}, illegal_operation,
+	 {&STY, ABSOLUTE,  2, 4, 0},   {&STA, ABSOLUTE,         2, 4, 0}, {&STX, ABSOLUTE,    2, 4, 0}, illegal_operation},
 	// 0x9
-	{{&BCC, RELATIVE, 1, 2},      {&STA, INDIRECT_INDEXED, 1, 6},    illegal_operation,            illegal_operation,
-	{&STY, ZERO_PAGE_X, 1, 4},    {&STA, ZERO_PAGE_X, 1, 4},         {&STX, ZERO_PAGE_Y, 1, 4},    illegal_operation,
-	{&TYA, IMPLICIT, 0, 2},       {&STA, ABSOLUTE_Y, 2, 5},          {&TXS, IMPLICIT, 0, 2},       illegal_operation,
-	illegal_operation,            {&STA, ABSOLUTE_X, 2, 5},          illegal_operation,            illegal_operation},
+	{{&BCC, RELATIVE,    1, 2, 0}, {&STA, INDIRECT_INDEXED, 1, 6, 0}, illegal_operation,            illegal_operation,
+	 {&STY, ZERO_PAGE_X, 1, 4, 0}, {&STA, ZERO_PAGE_X,      1, 4, 0}, {&STX, ZERO_PAGE_Y, 1, 4, 0}, illegal_operation,
+	 {&TYA, IMPLICIT,    0, 2, 0}, {&STA, ABSOLUTE_Y,       2, 5, 0}, {&TXS, IMPLICIT,    0, 2, 0}, illegal_operation,
+	 illegal_operation,            {&STA, ABSOLUTE_X,       2, 5, 0}, illegal_operation,            illegal_operation},
 	// 0xa
-	{{&LDY, IMMEDIATE, 1, 2},     {&LDA, INDEXED_INDIRECT, 1, 6},    {&LDX, IMMEDIATE, 1, 2},      illegal_operation,
-	{&LDY, ZERO_PAGE, 1, 3},      {&LDA, ZERO_PAGE, 1, 3},           {&LDX, ZERO_PAGE, 1, 3},      illegal_operation,
-	{&TAY, IMPLICIT, 0, 2},       {&LDA, IMMEDIATE, 1, 2},           {&TAX, IMPLICIT, 0, 2},       illegal_operation,
-	{&LDY, ABSOLUTE, 2, 4},       {&LDA, ABSOLUTE, 2, 4},            {&LDX, ABSOLUTE, 2, 4},       illegal_operation},
+	{{&LDY, IMMEDIATE, 1, 2, 0},   {&LDA, INDEXED_INDIRECT, 1, 6, 0}, {&LDX, IMMEDIATE,   1, 2, 0}, illegal_operation,
+	 {&LDY, ZERO_PAGE, 1, 3, 0},   {&LDA, ZERO_PAGE,        1, 3, 0}, {&LDX, ZERO_PAGE,   1, 3, 0}, illegal_operation,
+	 {&TAY, IMPLICIT,  0, 2, 0},   {&LDA, IMMEDIATE,        1, 2, 0}, {&TAX, IMPLICIT,    0, 2, 0}, illegal_operation,
+	 {&LDY, ABSOLUTE,  2, 4, 0},   {&LDA, ABSOLUTE,         2, 4, 0}, {&LDX, ABSOLUTE,    2, 4, 0}, illegal_operation},
 	// 0xb
-	{{&BCS, RELATIVE, 1, 2},      {&LDA, INDIRECT_INDEXED, 1, 5},    illegal_operation,            illegal_operation,
-	{&LDY, ZERO_PAGE_X, 1, 4},    {&LDA, ZERO_PAGE_X, 1, 4},         {&LDX, ZERO_PAGE_Y, 1, 4},    illegal_operation,
-	{&CLV, IMPLICIT, 0, 2},       {&LDA, ABSOLUTE_Y, 2, 4},          {&TSX, IMPLICIT, 0, 2},       illegal_operation,
-	{&LDY, ABSOLUTE_X, 2, 4},     {&LDA, ABSOLUTE_X, 2, 4},          {&LDX, ABSOLUTE_Y, 2, 4},     illegal_operation},
+	{{&BCS, RELATIVE,    1, 2, 0}, {&LDA, INDIRECT_INDEXED, 1, 5, 1}, illegal_operation,            illegal_operation,
+	 {&LDY, ZERO_PAGE_X, 1, 4, 0}, {&LDA, ZERO_PAGE_X,      1, 4, 0}, {&LDX, ZERO_PAGE_Y, 1, 4, 0}, illegal_operation,
+	 {&CLV, IMPLICIT,    0, 2, 0}, {&LDA, ABSOLUTE_Y,       2, 4, 1}, {&TSX, IMPLICIT,    0, 2, 0}, illegal_operation,
+	 {&LDY, ABSOLUTE_X,  2, 4, 1}, {&LDA, ABSOLUTE_X,       2, 4, 1}, {&LDX, ABSOLUTE_Y,  2, 4, 1}, illegal_operation},
 	// 0xc
-	{{&CPY, IMMEDIATE, 1, 2},     {&CMP, INDEXED_INDIRECT, 1, 6},    illegal_operation,            illegal_operation,
-	{&CPY, ZERO_PAGE, 1, 3},      {&CMP, ZERO_PAGE, 1, 3},           {&DEC, ZERO_PAGE, 1, 5},      illegal_operation,
-	{&INY, IMPLICIT, 0, 2},       {&CMP, IMMEDIATE, 1, 2},           {&DEX, IMPLICIT, 0, 2},       illegal_operation,
-	{&CPY, ABSOLUTE, 2, 4},       {&CMP, ABSOLUTE, 2, 4},            {&DEC, ABSOLUTE, 2, 6},       illegal_operation},
+	{{&CPY, IMMEDIATE, 1, 2, 0},   {&CMP, INDEXED_INDIRECT, 1, 6, 0}, illegal_operation,            illegal_operation,
+	 {&CPY, ZERO_PAGE, 1, 3, 0},   {&CMP, ZERO_PAGE,        1, 3, 0}, {&DEC, ZERO_PAGE,   1, 5, 0}, illegal_operation,
+	 {&INY, IMPLICIT,  0, 2, 0},   {&CMP, IMMEDIATE,        1, 2, 0}, {&DEX, IMPLICIT,    0, 2, 0}, illegal_operation,
+	 {&CPY, ABSOLUTE,  2, 4, 0},   {&CMP, ABSOLUTE,         2, 4, 0}, {&DEC, ABSOLUTE,    2, 6, 0}, illegal_operation},
 	// 0xd
-	{{&BNE, RELATIVE, 1, 2},      {&CMP, INDIRECT_INDEXED, 1, 5},    illegal_operation,            illegal_operation,
-	illegal_operation,            {&CMP, ZERO_PAGE_X, 1, 4},         {&DEC, ZERO_PAGE_X, 1, 6},    illegal_operation,
-	{&CLD, IMPLICIT, 0, 2},       {&CMP, ABSOLUTE_Y, 2, 4},          illegal_operation,            illegal_operation,
-	illegal_operation,            {&CMP, ABSOLUTE_X, 2, 4},          {&DEC, ABSOLUTE_X, 2, 7},     illegal_operation},
+	{{&BNE, RELATIVE,  1, 2, 0},   {&CMP, INDIRECT_INDEXED, 1, 5, 1}, illegal_operation,            illegal_operation,
+	 illegal_operation,            {&CMP, ZERO_PAGE_X,      1, 4, 0}, {&DEC, ZERO_PAGE_X, 1, 6, 0}, illegal_operation,
+	 {&CLD, IMPLICIT,  0, 2, 0},   {&CMP, ABSOLUTE_Y,       2, 4, 1}, illegal_operation,            illegal_operation,
+	 illegal_operation,            {&CMP, ABSOLUTE_X,       2, 4, 1}, {&DEC, ABSOLUTE_X,  2, 7, 0}, illegal_operation},
 	// 0xe
-	{{&CPX, IMMEDIATE, 1, 2},     {&SBC, INDEXED_INDIRECT, 1, 6},    illegal_operation,            illegal_operation,
-	{&CPX, ZERO_PAGE, 1, 3},      {&SBC, ZERO_PAGE, 1, 3},           {&INC, ZERO_PAGE, 1, 5},      illegal_operation,
-	{&INX, IMPLICIT, 0, 2},       {&SBC, IMMEDIATE, 1, 2},           {&NOP, IMPLICIT, 0, 2},       illegal_operation,
-	{&CPX, ABSOLUTE, 2, 4},       {&SBC, ABSOLUTE, 2, 4},            {&INC, ABSOLUTE, 2, 6},       illegal_operation},
+	{{&CPX, IMMEDIATE, 1, 2, 0},   {&SBC, INDEXED_INDIRECT, 1, 6, 0}, illegal_operation,            illegal_operation,
+	 {&CPX, ZERO_PAGE, 1, 3, 0},   {&SBC, ZERO_PAGE,        1, 3, 0}, {&INC, ZERO_PAGE,   1, 5, 0}, illegal_operation,
+	 {&INX, IMPLICIT,  0, 2, 0},   {&SBC, IMMEDIATE,        1, 2, 0}, {&NOP, IMPLICIT,    0, 2, 0}, illegal_operation,
+	 {&CPX, ABSOLUTE,  2, 4, 0},   {&SBC, ABSOLUTE,         2, 4, 0}, {&INC, ABSOLUTE,    2, 6, 0}, illegal_operation},
 	// 0xf
-	{{&BEQ, RELATIVE, 1, 2},      {&SBC, INDIRECT_INDEXED, 1, 5},    illegal_operation,            illegal_operation,
-	illegal_operation,            {&SBC, ZERO_PAGE_X, 1, 4},         {&INC, ZERO_PAGE_X, 1, 6},    illegal_operation,
-	{&SED, IMPLICIT, 0, 2},       {&SBC, ABSOLUTE_Y, 2, 4},          illegal_operation,            illegal_operation,
-	illegal_operation,            {&SBC, ABSOLUTE_X, 2, 4},          {&INC, ABSOLUTE_X, 2, 7},     illegal_operation}
+	{{&BEQ, RELATIVE,  1, 2, 0},   {&SBC, INDIRECT_INDEXED, 1, 5, 1}, illegal_operation,            illegal_operation,
+	 illegal_operation,            {&SBC, ZERO_PAGE_X,      1, 4, 0}, {&INC, ZERO_PAGE_X, 1, 6, 0}, illegal_operation,
+	 {&SED, IMPLICIT,  0, 2, 0},   {&SBC, ABSOLUTE_Y,       2, 4, 1}, illegal_operation,            illegal_operation,
+	 illegal_operation,            {&SBC, ABSOLUTE_X,       2, 4, 1}, {&INC, ABSOLUTE_X,  2, 7, 0}, illegal_operation}
 };
 
 #undef illegal_operation
