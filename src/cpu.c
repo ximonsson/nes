@@ -437,6 +437,7 @@ static int on_dma_write (uint16_t address, uint8_t value)
 	{
 		nes_ppu_load_oam_data (memory + value * 0x100);
 		cpucc += 513 + (cpucc & 1);
+		return 1;
 	}
 	return 0;
 }
@@ -447,13 +448,12 @@ static int on_dma_write (uint16_t address, uint8_t value)
 */
 static int on_controller_port_write (uint16_t address, uint8_t value)
 {
-	int ret = 0;
 	if (address == CTRL_ONE_MEM_LOC || address == CTRL_TWO_MEM_LOC)
 	{
 		nes_io_controller_port_write ((enum nes_io_controller_port) (address % 2), value);
-		ret = 1;
+		return 1;
 	}
-	return ret;
+	return 0;
 }
 
 /* End Store Handlers ----------------------------------------------------------------------------------------------- */
@@ -502,14 +502,13 @@ static read_handler read_handlers[MAX_EVENT_HANDLERS];
 /* Read from PPU register */
 static int on_ppu_register_read (uint16_t address, uint8_t *value)
 {
-	int ret = 0;
 	if (address >= PPU_REGISTER_MEM_LOC && address < PPU_REGISTER_MEM_LOC + 0x2000)
 	{
 		int reg = address % 8;
 		*value = nes_ppu_register_read (reg);
-		ret = 1;
+		return 1;
 	}
-	return ret;
+	return 0;
 }
 
 /**
@@ -518,13 +517,12 @@ static int on_ppu_register_read (uint16_t address, uint8_t *value)
 */
 static int on_controller_port_read (uint16_t address, uint8_t *value)
 {
-	int ret = 0;
 	if (address == CTRL_ONE_MEM_LOC || address == CTRL_TWO_MEM_LOC)
 	{
 		*value = nes_io_controller_port_read ((enum nes_io_controller_port) (address % 2));
-		ret = 1;
+		return 1;
 	}
-	return ret;
+	return 0;
 }
 
 /* End Read Handlers ------------------------------------------------------------------------------------------------ */
