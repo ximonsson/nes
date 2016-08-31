@@ -111,13 +111,33 @@ void nes_ppu_init ()
 }
 
 
+void nes_ppu_load_vram (void *data)
+{
+	memcpy (vram, data, VRAM_SIZE);
+}
+
+
+void nes_ppu_load_oam_data (void *data)
+{
+	uint8_t oamaddr = ppu_registers[OAMADDR];
+	// compute offset to make sure we wrap data
+	uint16_t offset = (PRIMARY_OAM_SIZE << 2) - oamaddr;
+	memcpy (primary_oam + oamaddr, data, offset);
+	memcpy (primary_oam, data + offset, oamaddr);
+}
+
+/*
+ *  Register Writers ---------------------------------------------------------------------------------------------------
+ */
+
+/* Write > PPUCTRL $(2000) */
 static void write_ppuctrl (uint8_t value)
 {
 	ppu_registers[PPUCTRL] = value;
 	t = (t & 0xF3FF) | ((value & 3) << 10);
 }
 
-
+/* Write > OAMDATA $(2004) */
 static void write_oamdata (uint8_t value)
 {
 	uint8_t *oamaddr = ppu_registers + OAMADDR;
@@ -125,7 +145,7 @@ static void write_oamdata (uint8_t value)
 	*oamaddr += 1;
 }
 
-
+/* Write > PPUSCROLL $(2005) */
 static void write_ppuscroll (uint8_t value)
 {
 	if (~flags & w)
@@ -140,6 +160,7 @@ static void write_ppuscroll (uint8_t value)
 	flags ^= w;
 }
 
+/* Write > PPUADDR $(2003) */
 static void write_ppuaddr (uint8_t value)
 {
 	if (~flags & w)
@@ -153,6 +174,7 @@ static void write_ppuaddr (uint8_t value)
 	flags ^= w;
 }
 
+/* Write > PPUDATA $(2007) */
 static void write_ppudata (uint8_t value)
 {
 	// mirror palettes
@@ -176,9 +198,8 @@ static void write_ppudata (uint8_t value)
 	// v %= 0x4000;
 }
 
-
-// ppu register write callbacks
-static void (*register_write_callbacks[8])(uint8_t) =
+/* Writer functions to PPU registers. Perform necessary modifications to PPU. */
+static void (*register_writers[8])(uint8_t) =
 {
 	&write_ppuctrl,
 	0, // &write_ppumask,
@@ -190,22 +211,26 @@ static void (*register_write_callbacks[8])(uint8_t) =
 	&write_ppudata
 };
 
-/**
- * Write value to PPU register and call any callbacks associated
- *  to it.
+/*
+ *  End Register Writers -----------------------------------------------------------------------------------------------
  */
+
+
+/* Write value to PPU register by calling the writer function associated to it. */
 void nes_ppu_register_write (nes_ppu_register reg, uint8_t value)
 {
 	uint8_t *ppustatus = ppu_registers + PPUSTATUS;
 	*ppustatus = (*ppustatus & 0xE0) | (value & 0x1F);
-	if (*register_write_callbacks[reg])
-		(*register_write_callbacks[reg])(value);
+	if (*register_writers[reg])
+		(*register_writers[reg])(value);
 }
 
 
 /*
- *  READ PPU REGISTERS CALLBACKS
+ *  Register Readers ---------------------------------------------------------------------------------------------------
  */
+
+/* Read < PPUSTATUS $(2002) */
 static uint8_t read_ppustatus ()
 {
 	uint8_t ret = ppu_registers[PPUSTATUS] & 0x7F;
@@ -220,11 +245,13 @@ static uint8_t read_ppustatus ()
 	return ret;
 }
 
+/* Read < OAMDATA $(2004) */
 static uint8_t read_oamdata ()
 {
 	return primary_oam[ppu_registers[OAMADDR]];
 }
 
+/* Read < PPUDATA $(2007) */
 static uint8_t read_ppudata ()
 {
 	uint8_t ret = 0;
@@ -245,7 +272,7 @@ static uint8_t read_ppudata ()
 }
 
 // PPU register read callbacks
-static uint8_t (*register_read_callbacks[8])() =
+static uint8_t (*register_readers[8])() =
 {
 	0,
 	0,
@@ -257,16 +284,16 @@ static uint8_t (*register_read_callbacks[8])() =
 	&read_ppudata
 };
 
-/**
- *  Read value from register.
- *  Calls the necessary callbacks associated to reads.
+/*
+ *  End Register Readers -----------------------------------------------------------------------------------------------
  */
+
+
 uint8_t nes_ppu_register_read (nes_ppu_register reg)
 {
-	if (*register_read_callbacks[reg])
-		return (*register_read_callbacks[reg])();
-	else
-		return ppu_registers[reg];
+	if (*register_readers[reg])
+		return (*register_readers[reg])();
+	return 0;
 }
 
 
@@ -294,7 +321,6 @@ static inline void increment_vertical_scroll ()
 	}
 }
 
-
 /**
  *  Increase current horizontal scroll.
  */
@@ -308,7 +334,6 @@ static inline void increment_horizontal_scroll ()
 	else
 		v ++; // increment coarse X
 }
-
 
 /**
  *  Get background color and pixel value at x and y on the screen.
@@ -335,7 +360,6 @@ static uint8_t background_color (int dot, uint8_t *pixel)
 	return vram[0x3F00 + (palette << 2) + (*pixel)];
 }
 
-
 /**
  *  Get sprite color and pixel value at x and y coordinates within the sprite.
  */
@@ -358,7 +382,7 @@ static void sprite_color (int sprite_index, int x, int y, uint8_t *pixel, uint8_
 	*color = vram[0x3F10 + (sprite[2] & 0x3) * 4 + (*pixel)];
 }
 
-
+/* set_pixel_color renders to virtual screen @ (x, y) the color pointed out by pindex from the palettee */
 static void inline set_pixel_color (int x, int y, uint8_t pindex)
 {
 	static const uint8_t palette[64][3] = {
@@ -388,7 +412,10 @@ static void inline set_pixel_color (int x, int y, uint8_t pindex)
 		*(p + i) *= mod;
 }
 
-
+/**
+ *  render_pixel wil compute what color the pixel @ (x, y) will have and render it to the virtual screen.
+ *  Computation of pixel is done by taking into account background/sprite priorities and looking at nametables/sprites.
+ */
 static void inline render_pixel (int x, int y)
 {
 	uint8_t bg_pixel = 0,
@@ -449,7 +476,6 @@ static void inline render_pixel (int x, int y)
 	set_pixel_color (x, y, palette_index);
 }
 
-
 /**
  * render renders the virtual screen to buffer.
  */
@@ -463,7 +489,6 @@ const uint8_t* nes_screen_buffer ()
 {
 	return screen_buffer;
 }
-
 
 /**
  *  Perform sprite evaluation for the current scanline.
@@ -505,10 +530,11 @@ static void sprite_evaluation (int scanline)
 	}
 }
 
+// RENDERING_ENABLED returns wether either background or sprites are to be rendered
 #define RENDERING_ENABLED (ppu_registers[PPUMASK] & 0x18)
 
 /**
- *  tick makes the PPU turn one cycle, and making any status updates by doing so.
+ *  tick makes the PPU turn one cycle, and making any status updates, such as odd/event frame flag, by doing so.
  */
 static void inline tick ()
 {
@@ -516,7 +542,7 @@ static void inline tick ()
 	int scanln = ppucc / PPUCC_PER_SCANLINE;
 	int dot = ppucc % PPUCC_PER_SCANLINE;
 
-	if ((flags & odd_frame) && RENDERING_ENABLED && scanln == SCANLINES_PER_FRAME - 1 && dot == PPUCC_PER_SCANLINE - 2)
+	if (RENDERING_ENABLED && scanln == SCANLINES_PER_FRAME - 1 && dot == PPUCC_PER_SCANLINE - 2 && (flags & odd_frame))
 	{
 		// If we are rendering, odd frames are one cycle shorter. This is done by skipping the last cycle of the frame.
 		ppucc ++;
@@ -550,7 +576,7 @@ void nes_ppu_step ()
 			render_pixel (dot - 1, scanln); // render pixel to screen
 
 		// TODO revise if we need to implement correct fetching of nametable bytes
-		//      so far render_pixel and background_color computes that for us.
+		//      - so far render_pixel and background_color computes that for us.
 
 		// Scroll !!
 		if (visible_scanln || pre_scanln)
@@ -598,19 +624,4 @@ void nes_ppu_step ()
 			ppu_registers[PPUSTATUS] &= ~(VBLANK | SPRITE_ZERO_HIT | SPRITE_OVERFLOW);
 		}
 	}
-}
-
-
-void nes_ppu_load_vram (void *data)
-{
-	memcpy (vram, data, VRAM_SIZE);
-}
-
-
-void nes_ppu_load_oam_data (void *data)
-{
-	uint8_t  oamaddr = ppu_registers[OAMADDR];
-	uint16_t offset  = PRIMARY_OAM_SIZE * 4 - oamaddr;
-	memcpy (primary_oam + oamaddr, data, offset);
-	memcpy (primary_oam, data + offset, oamaddr);
 }
