@@ -416,14 +416,13 @@ static store_handler store_handlers[MAX_EVENT_HANDLERS];
 
 /**
 *  Store event handler for when we are modifying PPU registers.
-*  Will always return 0 (OK).
 */
-static int on_ppu_modified (uint16_t address, uint8_t value)
+static int on_ppu_register_write (uint16_t address, uint8_t value)
 {
 	if (address >= PPU_REGISTER_MEM_LOC && address < PPU_REGISTER_MEM_LOC + 0x2000)
 	{
 		nes_ppu_register_write (address % 8, value);
-		// return 1;
+		return 1;
 	}
 	return 0;
 }
@@ -579,7 +578,7 @@ void nes_cpu_init ()
 	memset (read_handlers,  0, MAX_EVENT_HANDLERS * sizeof (read_handler));
 
 	// register store event handlers
-	store_handlers[0] = &on_ppu_modified;
+	store_handlers[0] = &on_ppu_register_write;
 	store_handlers[1] = &on_dma_write;
 	store_handlers[2] = &on_controller_port_write;
 

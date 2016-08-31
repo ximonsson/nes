@@ -137,6 +137,18 @@ static void write_ppuctrl (uint8_t value)
 	t = (t & 0xF3FF) | ((value & 3) << 10);
 }
 
+/* Write > PPUMASK $(2001) */
+static void write_ppumask (uint8_t value)
+{
+	ppu_registers[PPUMASK] = value;
+}
+
+/* Write > OAMADDR $(2002) */
+static void write_oamaddr (uint8_t value)
+{
+	ppu_registers[OAMADDR] = value;
+}
+
 /* Write > OAMDATA $(2004) */
 static void write_oamdata (uint8_t value)
 {
@@ -160,7 +172,7 @@ static void write_ppuscroll (uint8_t value)
 	flags ^= w;
 }
 
-/* Write > PPUADDR $(2003) */
+/* Write > PPUADDR $(2006) */
 static void write_ppuaddr (uint8_t value)
 {
 	if (~flags & w)
@@ -202,9 +214,9 @@ static void write_ppudata (uint8_t value)
 static void (*register_writers[8])(uint8_t) =
 {
 	&write_ppuctrl,
-	0, // &write_ppumask,
+	&write_ppumask,
 	0, // &write_ppustatus,
-	0, // &write_oamaddr,
+	&write_oamaddr,
 	&write_oamdata,
 	&write_ppuscroll,
 	&write_ppuaddr,
