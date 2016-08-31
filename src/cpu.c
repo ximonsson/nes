@@ -508,17 +508,7 @@ static int on_ppu_register_read (uint16_t address, uint8_t *value)
 	{
 		int reg = address % 8;
 		*value = nes_ppu_register_read (reg);
-		// ret = 1;
-		switch (reg)
-		{
-			// these we know return special values in the PPU
-			// and have special callbacks that need to be called.
-			case PPUSTATUS:
-			case PPUDATA:
-			case OAMDATA:
-			ret = 1;
-			break;
-		}
+		ret = 1;
 	}
 	return ret;
 }
