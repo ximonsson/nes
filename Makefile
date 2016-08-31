@@ -30,7 +30,7 @@ LDFLAGS += -L./libs -lSDL2 -lGLESv2 -lpthread -lnes
 ARCMD = rcs
 
 
-all: lib app
+all: lib exec
 
 lib: $(LIB)
 
