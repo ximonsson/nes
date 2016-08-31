@@ -147,8 +147,8 @@ void nes_cpu_load_prg_rom (void *data)
 
 
 /** ----------------------------------------------------------------------------------------------
-* ADDRESSING FUNCTIONS
-*  ---------------------------------------------------------------------------------------------- */
+ *  ADDRESSING FUNCTIONS
+ *  ---------------------------------------------------------------------------------------------- */
 
 static uint16_t zero_page ()
 {
@@ -362,9 +362,9 @@ static void (*address_calculators_string[13])(char *) =
 
 
 /**
-*  Calculate new address, number of bytes to progress and if a page cross occurred given
-*  an addressing mode.
-*/
+ *  Calculate new address, number of bytes to progress and if a page cross occurred given
+ *  an addressing mode.
+ */
 static uint16_t calculate_address (addressing_mode mode)
 {
 	uint16_t addr = (*address_calculators[mode])();
@@ -374,8 +374,8 @@ static uint16_t calculate_address (addressing_mode mode)
 /* end ADDRESSING FUNCTIONS ----------------------------------------------------------- */
 
 /**
-*  Push a value on to the stack.
-*/
+ *  Push a value on to the stack.
+ */
 static void push (uint8_t value)
 {
 	memory[STACK_LOCATION | sp] = value;
@@ -383,8 +383,8 @@ static void push (uint8_t value)
 }
 
 /**
-*  Pop a value from the stack.
-*/
+ *  Pop a value from the stack.
+ */
 static uint8_t pop ()
 {
 	sp ++;
@@ -392,9 +392,9 @@ static uint8_t pop ()
 }
 
 /**
-*  Branch an offset number of bytes.
-*  Returns 1 if to a new page, 0 if on the same.
-*/
+ *  Branch an offset number of bytes.
+ *  Returns 1 if to a new page, 0 if on the same.
+ */
 static void branch (int8_t offset)
 {
 	uint16_t _pc = pc + offset;
@@ -407,16 +407,16 @@ static void branch (int8_t offset)
 /* Store Handlers --------------------------------------------------------------------------------------------------- */
 
 /**
-*  typedef function for store event handler.
-*  takes an address and value we are trying to store at it.
-*  returns 1 or 0 incase we should stop propagation.
-*/
+ *  typedef function for store event handler.
+ *  takes an address and value we are trying to store at it.
+ *  returns 1 or 0 incase we should stop propagation.
+ */
 typedef int (*store_handler) (uint16_t address, uint8_t value) ;
 static store_handler store_handlers[MAX_EVENT_HANDLERS];
 
 /**
-*  Store event handler for when we are modifying PPU registers.
-*/
+ *  Store event handler for when we are modifying PPU registers.
+ */
 static int on_ppu_register_write (uint16_t address, uint8_t value)
 {
 	if (address >= PPU_REGISTER_MEM_LOC && address < PPU_REGISTER_MEM_LOC + 0x2000)
@@ -428,9 +428,9 @@ static int on_ppu_register_write (uint16_t address, uint8_t value)
 }
 
 /**
-*  Store event handler for when writing to OAM_DMA register.
-*  Always returns 0 (OK).
-*/
+ *  Store event handler for when writing to OAM_DMA register.
+ *  Always returns 0 (OK).
+ */
 static int on_dma_write (uint16_t address, uint8_t value)
 {
 	if (address == OAM_DMA_REGISTER)
@@ -443,9 +443,9 @@ static int on_dma_write (uint16_t address, uint8_t value)
 }
 
 /**
-*  Event handler for writes to one of the controller ports.
-*  Will stop propagation if the address is one of the controller ports.
-*/
+ *  Event handler for writes to one of the controller ports.
+ *  Will stop propagation if the address is one of the controller ports.
+ */
 static int on_controller_port_write (uint16_t address, uint8_t value)
 {
 	if (address == CTRL_ONE_MEM_LOC || address == CTRL_TWO_MEM_LOC)
@@ -460,9 +460,9 @@ static int on_controller_port_write (uint16_t address, uint8_t value)
 
 
 /**
-*  Store value to memory.
-*  Loop through and call all registered store event handlers.
-*/
+ *  Store value to memory.
+ *  Loop through and call all registered store event handlers.
+ */
 static void mem_store (uint8_t value, uint16_t address)
 {
 	// loop through store event handlers
@@ -492,10 +492,10 @@ static void mem_store (uint8_t value, uint16_t address)
 /* Read Handlers ---------------------------------------------------------------------------------------------------- */
 
 /**
-*  typedef for read event handler.
-*  takes an address and pointer to a value to set.
-*  returns 1 or 0 depending on if we should prevent propagation
-*/
+ *  typedef for read event handler.
+ *  takes an address and pointer to a value to set.
+ *  returns 1 or 0 depending on if we should prevent propagation
+ */
 typedef int (*read_handler) (uint16_t address, uint8_t *value) ;
 static read_handler read_handlers[MAX_EVENT_HANDLERS];
 
@@ -512,9 +512,9 @@ static int on_ppu_register_read (uint16_t address, uint8_t *value)
 }
 
 /**
-*   Event handler for reading one of the controller ports.
-*   Will stop propagation if the address is one of the address ports.
-*/
+ *   Event handler for reading one of the controller ports.
+ *   Will stop propagation if the address is one of the address ports.
+ */
 static int on_controller_port_read (uint16_t address, uint8_t *value)
 {
 	if (address == CTRL_ONE_MEM_LOC || address == CTRL_TWO_MEM_LOC)
@@ -529,9 +529,9 @@ static int on_controller_port_read (uint16_t address, uint8_t *value)
 
 
 /**
-*  Read a value from the memory.
-*  Loop through all read event handlers before returning the value.
-*/
+ *  Read a value from the memory.
+ *  Loop through all read event handlers before returning the value.
+ */
 static uint8_t mem_read (uint16_t address)
 {
 	uint8_t b = memory[address];
@@ -543,8 +543,8 @@ static uint8_t mem_read (uint16_t address)
 }
 
 /**
-*  Init the CPU to its startup state.
-*/
+ *  Init the CPU to its startup state.
+ */
 void nes_cpu_init ()
 {
 	// default values of registers
@@ -604,10 +604,10 @@ static inline void interrupt (uint16_t _pc)
 }
 
 /**
-*  Preferred abstract function for getting a value depending on addressing mode.
-*  Will make sure to call correct functions for read events and skip in case
-*  we are after the accumulator.
-*/
+ *  Preferred abstract function for getting a value depending on addressing mode.
+ *  Will make sure to call correct functions for read events and skip in case
+ *  we are after the accumulator.
+ */
 static uint8_t get_value (addressing_mode mode)
 {
 	if (mode == ACCUMULATOR)
@@ -620,9 +620,9 @@ static uint8_t get_value (addressing_mode mode)
 }
 
 /**
-*  Convenience function for setting flags depending of the value of
-*  value parameter.
-*/
+ *  Convenience function for setting flags depending of the value of
+ *  value parameter.
+ */
 static inline void set_flags (uint8_t value, uint8_t flags)
 {
 	ps &= ~flags;
@@ -634,13 +634,13 @@ static inline void set_flags (uint8_t value, uint8_t flags)
 
 
 /** -----------------------------------------------------------------------------------
-* CPU INSTRUCTIONS  *
-* ------------------------------------------------------------------------------------ */
+ * CPU INSTRUCTIONS  *
+ * ------------------------------------------------------------------------------------ */
 
 /**
-*  CPU Instruction.
-*  Has a name (for debugging purposes) and a pointer to a function which to run.
-*/
+ *  CPU Instruction.
+ *  Has a name (for debugging purposes) and a pointer to a function which to run.
+ */
 typedef struct instruction
 {
 	const char *name;
