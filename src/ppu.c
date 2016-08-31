@@ -113,6 +113,7 @@ void nes_ppu_init ()
 
 static void write_ppuctrl (uint8_t value)
 {
+	ppu_registers[PPUCTRL] = value;
 	t = (t & 0xF3FF) | ((value & 3) << 10);
 }
 
@@ -207,9 +208,10 @@ void nes_ppu_register_write (nes_ppu_register reg, uint8_t value)
  */
 static uint8_t read_ppustatus ()
 {
-	uint8_t ret = ppu_registers[PPUSTATUS];
+	uint8_t ret = ppu_registers[PPUSTATUS] & 0x7F;
 	// set bit 7 to old status of NMI occurred
-	// ret = (ret & 0x7F) | (flags & nmi_occurred) << 6;
+	if (flags & nmi_occurred)
+		ret |= 1 << 7;
 	// reset address latch for PPUSCROLL and NMI occured.
 	flags &= ~(w | nmi_occurred);
 	// clear VBLANK flag
@@ -586,9 +588,9 @@ void nes_ppu_step ()
 		{
 			// Set VBLANK and generate NMI
 			ppu_registers[PPUSTATUS] |= VBLANK;
+			flags |= nmi_occurred;
 			if (ppu_registers[PPUCTRL] & GENERATE_NMI)
 			{
-				flags |= nmi_occurred;
 				// TODO i have seen implementations where they delay this a number of cycles
 				nes_cpu_signal (NMI);
 			}
