@@ -2,6 +2,7 @@
 #include "nes/cpu.h"
 #include "nes/ppu.h"
 #include "nes/io.h"
+#include "nes/apu.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -163,6 +164,7 @@ void nes_run (const char *file)
 	// init hardware
 	nes_cpu_init ();
 	nes_ppu_init ();
+	nes_apu_init ();
 
 	// run the game
 	// struct timespec timer;

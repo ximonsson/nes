@@ -33,7 +33,21 @@ typedef enum nes_apu_register
 nes_apu_register;
 
 
+/**
+ *  nes_apu_init initializes the APU.
+ *  Returns non zero on failure.
+ */
+int nes_apu_init () ;
+
+/**
+ *  nes_apu_register_write writes value to the APU's register associated with the given address.
+ */
 void nes_apu_register_write (uint16_t /* address */, uint8_t /* value */) ;
+
+/**
+ *  nes_apu_register_read reads from the APU register associated with the supplied address.
+ */
+uint8_t nes_apu_register_read (uint16_t /* address */) ;
 
 /**
  *  nes_apu_step performs a tick in the APU
