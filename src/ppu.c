@@ -374,17 +374,16 @@ static void load_tile ()
 	uint8_t nametable = vram[0x2000 | (v & 0x0FFF)];
 	// flagged background pattern tile table in ppuctrl
 	uint8_t table = (ppu_registers[PPUCTRL] & 0x10) >> 4;
-	// tile location
+	// tile data
 	uint16_t tile = table * 0x1000 + nametable * 0x10 + y;
+	uint8_t low = vram[tile];
+	uint8_t high = vram[tile + 8];
 
-	// get attribute byte
+	// get attribute byte and compute background palette for this tile
 	uint8_t attribute = vram[0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07)];
 	uint8_t palette = (attribute >> (((v >> 4) & 4) | (v & 2))) & 3;
 
-	uint8_t low = vram[tile];
-	uint8_t high = vram[tile + 8];
 	uint64_t colors = 0;
-
 	for (int i = 0; i < 8; i ++)
 	{
 		colors <<= 4;
@@ -399,11 +398,11 @@ static void load_tile ()
  *  Get background color (index in palette) and pixel value at x and y on the screen.
  *  The pixel value can be used to see if this pixel is transparent by making the check pixel == 0.
  */
-static uint8_t background_color (int dot, uint8_t *pixel)
+static uint8_t background_color (int dot, uint8_t* pixel)
 {
-	uint8_t color = tiles >> (((dot & 7) + x) * 4);
-	*pixel = color & 0x3;
-	return vram[0x3F00 + (color & 0xF)];
+	uint8_t color = (tiles >> (((dot & 7) + x) << 2)) & 0xF;
+	*pixel = color & 3;
+	return vram[0x3F00 + color];
 }
 
 /**
@@ -411,17 +410,18 @@ static uint8_t background_color (int dot, uint8_t *pixel)
  */
 static void sprite_color (int sprite_index, int x, int y, uint8_t *pixel, uint8_t *color)
 {
-	int pattern;
 	uint8_t *sprite = primary_oam + sprite_index * 4;
-	int h = SPRITE_HEIGHT + ((ppu_registers[PPUCTRL] & 0x20) ? SPRITE_HEIGHT : 0);
+	int h = SPRITE_HEIGHT + ((ppu_registers[PPUCTRL] & 0x20) >> 2);
 
+	int pattern;
 	if (h == 8) // 8x8 mode
 		pattern = ((ppu_registers[PPUCTRL] & 0x08) >> 3) * 0x1000 + sprite[1] * 0x10;
 	else // 8x16 mode
 		pattern = (sprite[1] & 1) * 0x1000 + (sprite[1] & ~1) * 0x10;
 
-	x += ((sprite[2] & 0x40) >> 6) * (7 - 2 * x);
+	x += ((sprite[2] & 0x40) >> 6) * (7 - 2 * x); // think this is a general formula in case sprite is flipped.
 	y += ((sprite[2] & 0x80) >> 7) * (h - 1 - 2 * y);
+
 	// get pixel (0, 1 or 2?) (within palette?)
 	// fan det är mycket magi som händer här, jag kommmer inte ihåg hur jag gjorde detta....
 	*pixel = ((vram[pattern + y] >> (7 - x)) & 1) | (((vram[pattern + y + h] >> (7 - x)) << 1) & 2);
@@ -464,10 +464,9 @@ static void inline set_pixel_color (int x, int y, uint8_t pindex)
  */
 static void inline render_pixel (int x, int y)
 {
-	uint8_t bg_pixel = 0,
-	        sprite_pixel = 0,
-	        bg_color = 0,
-	        sprite_clr = 0;
+	uint8_t bg_color   = 0,
+	        sprite_clr = 0,
+	        bg_pixel   = 0;
 
 	// default palette index to background clear color
 	uint8_t color = vram[0x3F00];
@@ -476,45 +475,45 @@ static void inline render_pixel (int x, int y)
 	if (!((ppu_registers[PPUMASK] & 0x08) == 0 || ((ppu_registers[PPUMASK] & 0x02) == 0 && y < 8 && x < 8)))
 	{
 		bg_color = background_color (x, &bg_pixel);
-		if (bg_pixel != 0)
+		if (bg_pixel)
 			color = bg_color;
 	}
-	// sprites
+	// sprite
 	if (!((ppu_registers[PPUMASK] & 0x10) == 0 || ((ppu_registers[PPUMASK] & 0x4) == 0 && y < 8 && x < 8)))
 	{
 		uint8_t *sprite;
-		int si, x_off, y_off;
-		uint8_t tmp;
+		int sindex, x_off, y_off;
+		uint8_t pixel;
 
 		// loop through secondary OAM
-		for (int i = 0; i < SECONDARY_OAM_SIZE && sprite_pixel == 0; i ++)
+		for (int i = 0; i < SECONDARY_OAM_SIZE; i ++)
 		{
 			// no more sprites in 2nd OAM
-			if ((si = secondary_oam[i]) == 0xFF)
+			if ((sindex = secondary_oam[i]) == 0xFF)
 				break;
 
-			sprite = primary_oam + si * 4;
+			sprite = primary_oam + (sindex << 2);
 
-			// sprite too far away
-			if (!(sprite[3] <= x && x - sprite[3] < 8))
-				continue;
+			if (sprite[3] > x || x - sprite[3] > 8)
+				continue; // sprite too far away
 
 			x_off = x - sprite[3];
 			y_off = y - sprite[0];
-			sprite_color (si, x_off, y_off, &tmp, &sprite_clr);
-			if (tmp != 0)
+			sprite_color (sindex, x_off, y_off, &pixel, &sprite_clr);
+			if (pixel)
 			{
 				// sprite found
-				if (bg_pixel != 0)
+				if (bg_pixel)
 				{
-					if (si == 0) // sprite zero hit
+					// also found non-zero BG
+					if (sindex == 0 && x != 255) // sprite zero hit
 						ppu_registers[PPUSTATUS] |= SPRITE_ZERO_HIT;
 
 					if ((sprite[2] & 0x20) == 0x20) // bg priority
 						continue;
 				}
-				sprite_pixel = tmp;
 				color = sprite_clr;
+				break;
 			}
 		}
 	}
@@ -546,14 +545,14 @@ static void sprite_evaluation (int scanline)
 	int i = 0;
 	int y = 0;
 	int m = 0;
-	int h = SPRITE_HEIGHT + ((ppu_registers[PPUCTRL] & 0x20) ? SPRITE_HEIGHT : 0);
+	int h = 8 + ((ppu_registers[PPUCTRL] & 0x20) >> 2);
 	int sprites = 0;
 	memset (secondary_oam, 0xFF, SECONDARY_OAM_SIZE);
 	// loop through primary OAM and store indices to sprites in secondary OAM.
 	for (i = ppu_registers[OAMADDR]; i < PRIMARY_OAM_SIZE * 4 && sprites < SECONDARY_OAM_SIZE; i += 4)
 	{
 		y = primary_oam[i];
-		if (y <= scanline && scanline < y + h)
+		if (y < SCREEN_H - 1 && y <= scanline && scanline < y + h)
 		{
 			secondary_oam[sprites] = i / 4;
 			sprites ++;
@@ -643,7 +642,7 @@ void nes_ppu_step ()
 				// copy horizontal bits from t to v
 				v = (v & ~0x041F) | (t & 0x041F);
 				if (visible_scanln)
-					sprite_evaluation (scanln + 1); // evaluate sprites for next scanline
+					sprite_evaluation (scanln); // evaluate sprites for next scanline
 			}
 		}
 	}
