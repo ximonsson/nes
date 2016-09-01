@@ -395,7 +395,7 @@ static int on_ppu_register_write (uint16_t address, uint8_t value)
 {
 	if (address >= PPU_REGISTER_MEM_LOC && address < PPU_REGISTER_MEM_LOC + 0x2000)
 	{
-		nes_ppu_register_write (address % 8, value);
+		nes_ppu_register_write (address & 7, value);
 		return 1;
 	}
 	return 0;
@@ -424,7 +424,7 @@ static int on_controller_port_write (uint16_t address, uint8_t value)
 {
 	if (address == CTRL_ONE_MEM_LOC || address == CTRL_TWO_MEM_LOC)
 	{
-		nes_io_controller_port_write ((enum nes_io_controller_port) (address % 2), value);
+		nes_io_controller_port_write ((enum nes_io_controller_port) (address & 1), value);
 		return 1;
 	}
 	return 0;
@@ -454,12 +454,6 @@ static void mem_store (uint8_t value, uint16_t address)
 		for (int i = address % 0x800; i < 0x2000; i += 0x800)
 			memory[i] = value;
 	}
-	else if (address >= PPU_REGISTER_MEM_LOC && address < PPU_REGISTER_MEM_LOC + 0x2000)
-	{
-		// PPU register
-		for (int i = PPU_REGISTER_MEM_LOC + address % 8; i < PPU_REGISTER_MEM_LOC + 0x2000; i += 8)
-			memory[i] = value;
-	}
 }
 
 
@@ -478,7 +472,7 @@ static int on_ppu_register_read (uint16_t address, uint8_t *value)
 {
 	if (address >= PPU_REGISTER_MEM_LOC && address < PPU_REGISTER_MEM_LOC + 0x2000)
 	{
-		int reg = address % 8;
+		int reg = address & 7;
 		*value = nes_ppu_register_read (reg);
 		return 1;
 	}
@@ -493,7 +487,7 @@ static int on_controller_port_read (uint16_t address, uint8_t *value)
 {
 	if (address == CTRL_ONE_MEM_LOC || address == CTRL_TWO_MEM_LOC)
 	{
-		*value = nes_io_controller_port_read ((enum nes_io_controller_port) (address % 2));
+		*value = nes_io_controller_port_read ((enum nes_io_controller_port) (address & 1));
 		return 1;
 	}
 	return 0;
