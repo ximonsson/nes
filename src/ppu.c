@@ -540,8 +540,9 @@ const uint8_t* nes_screen_buffer ()
  *  Loads into secondary OAM up to 8 sprites that are to be rendered.
  *  Also sets the sprite overflow flag in case more than 8 are found.
  */
-static void sprite_evaluation (int scanline)
+static void sprite_evaluation ()
 {
+	int scanln = ppucc / PPUCC_PER_SCANLINE + 1;
 	int i = 0;
 	int y = 0;
 	int m = 0;
@@ -549,22 +550,22 @@ static void sprite_evaluation (int scanline)
 	int sprites = 0;
 	memset (secondary_oam, 0xFF, SECONDARY_OAM_SIZE);
 	// loop through primary OAM and store indices to sprites in secondary OAM.
-	for (i = ppu_registers[OAMADDR]; i < PRIMARY_OAM_SIZE * 4 && sprites < SECONDARY_OAM_SIZE; i += 4)
+	for (i = 0; i < PRIMARY_OAM_SIZE && sprites < SECONDARY_OAM_SIZE; i ++)
 	{
-		y = primary_oam[i];
-		if (y < SCREEN_H - 1 && y <= scanline && scanline < y + h)
+		y = primary_oam[i << 2];
+		if (y < SCREEN_H - 1 && y <= scanln && scanln < y + h)
 		{
-			secondary_oam[sprites] = i / 4;
+			secondary_oam[sprites] = i;
 			sprites ++;
 		}
 	}
 	// in case we found 8, check for overflow
 	if (sprites == SECONDARY_OAM_SIZE)
 	{
-		for (m = 0; i < PRIMARY_OAM_SIZE * 4; i += 4)
+		for (m = 0; i < PRIMARY_OAM_SIZE; i ++)
 		{
-			y = primary_oam[i + m];
-			if (y <= scanline && scanline < y + h)
+			y = primary_oam[(i << 2) + m];
+			if (y <= scanln && scanln < y + h)
 			{
 				ppu_registers[PPUSTATUS] |= SPRITE_OVERFLOW;
 				break; // jag tror man ska gå igenom allt, men fuck it.
@@ -642,7 +643,7 @@ void nes_ppu_step ()
 				// copy horizontal bits from t to v
 				v = (v & ~0x041F) | (t & 0x041F);
 				if (visible_scanln)
-					sprite_evaluation (scanln); // evaluate sprites for next scanline
+					sprite_evaluation (); // evaluate sprites for next scanline
 			}
 		}
 	}
