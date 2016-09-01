@@ -408,16 +408,16 @@ static uint8_t background_color (int dot, uint8_t* pixel)
 /**
  *  Get sprite color and pixel value at x and y coordinates within the sprite.
  */
-static void sprite_color (int sprite_index, int x, int y, uint8_t *pixel, uint8_t *color)
+static uint8_t sprite_color (int sprite_index, int x, int y, uint8_t *pixel)
 {
 	uint8_t *sprite = primary_oam + sprite_index * 4;
 	int h = SPRITE_HEIGHT + ((ppu_registers[PPUCTRL] & 0x20) >> 2);
 
 	int pattern;
 	if (h == 8) // 8x8 mode
-		pattern = ((ppu_registers[PPUCTRL] & 0x08) >> 3) * 0x1000 + sprite[1] * 0x10;
+		pattern = ((ppu_registers[PPUCTRL] & 0x08) << 5) + sprite[1] * 0x10;
 	else // 8x16 mode
-		pattern = (sprite[1] & 1) * 0x1000 + (sprite[1] & ~1) * 0x10;
+		pattern = ((sprite[1] & 1) << 8) + (sprite[1] & ~1) * 0x10;
 
 	x += ((sprite[2] & 0x40) >> 6) * (7 - 2 * x); // think this is a general formula in case sprite is flipped.
 	y += ((sprite[2] & 0x80) >> 7) * (h - 1 - 2 * y);
@@ -425,7 +425,7 @@ static void sprite_color (int sprite_index, int x, int y, uint8_t *pixel, uint8_
 	// get pixel (0, 1 or 2?) (within palette?)
 	// fan det är mycket magi som händer här, jag kommmer inte ihåg hur jag gjorde detta....
 	*pixel = ((vram[pattern + y] >> (7 - x)) & 1) | (((vram[pattern + y + h] >> (7 - x)) << 1) & 2);
-	*color = vram[0x3F10 + (sprite[2] & 0x3) * 4 + (*pixel)];
+	return vram[0x3F10 + (sprite[2] & 0x3) * 4 + (*pixel)];
 }
 
 /* set_pixel_color renders to virtual screen @ (x, y) the color pointed out by pindex from the palettee */
@@ -499,7 +499,7 @@ static void inline render_pixel (int x, int y)
 
 			x_off = x - sprite[3];
 			y_off = y - sprite[0];
-			sprite_color (sindex, x_off, y_off, &pixel, &sprite_clr);
+			sprite_clr = sprite_color (sindex, x_off, y_off, &pixel);
 			if (pixel)
 			{
 				// sprite found
@@ -542,19 +542,19 @@ const uint8_t* nes_screen_buffer ()
  */
 static void sprite_evaluation ()
 {
-	int scanln = ppucc / PPUCC_PER_SCANLINE + 1;
+	int scanln = ppucc / PPUCC_PER_SCANLINE + 1; // next scanline
 	int i = 0;
-	int y = 0;
-	int m = 0;
+ 	uint8_t* y = primary_oam;
 	int h = 8 + ((ppu_registers[PPUCTRL] & 0x20) >> 2);
 	int sprites = 0;
 	memset (secondary_oam, 0xFF, SECONDARY_OAM_SIZE);
+
 	// loop through primary OAM and store indices to sprites in secondary OAM.
-	for (i = 0; i < PRIMARY_OAM_SIZE && sprites < SECONDARY_OAM_SIZE; i ++)
+	for (i = 0; i < PRIMARY_OAM_SIZE && sprites < SECONDARY_OAM_SIZE; i ++, y += 4)
 	{
-		y = primary_oam[i << 2];
-		if (y < SCREEN_H - 1 && y <= scanln && scanln < y + h)
+		if ((*y) < SCREEN_H - 1 && (*y) <= scanln && scanln < (*y) + h)
 		{
+			// sprite in range
 			secondary_oam[sprites] = i;
 			sprites ++;
 		}
@@ -562,10 +562,10 @@ static void sprite_evaluation ()
 	// in case we found 8, check for overflow
 	if (sprites == SECONDARY_OAM_SIZE)
 	{
-		for (m = 0; i < PRIMARY_OAM_SIZE; i ++)
+		for (int m = 0; i < PRIMARY_OAM_SIZE; i ++, y += 4)
 		{
-			y = primary_oam[(i << 2) + m];
-			if (y <= scanln && scanln < y + h)
+			y += m;
+			if ((*y) <= scanln && scanln < (*y) + h)
 			{
 				ppu_registers[PPUSTATUS] |= SPRITE_OVERFLOW;
 				break; // jag tror man ska gå igenom allt, men fuck it.
@@ -579,9 +579,7 @@ static void sprite_evaluation ()
 // RENDERING_ENABLED returns wether either background or sprites are to be rendered
 #define RENDERING_ENABLED (ppu_registers[PPUMASK] & 0x18)
 
-/**
- *  tick makes the PPU turn one cycle, and making any status updates, such as odd/event frame flag, by doing so.
- */
+/* tick makes the PPU turn one cycle, and making any status updates, such as odd/event frame flag, by doing so. */
 static void inline tick ()
 {
 	// compute scanline and dot we are currently rendering
@@ -650,7 +648,7 @@ void nes_ppu_step ()
 
 	if (dot == 1)
 	{
-		if (scanln == 241) // line 241
+		if (scanln == 241)
 		{
 			// Set VBLANK and generate NMI
 			ppu_registers[PPUSTATUS] |= VBLANK;
