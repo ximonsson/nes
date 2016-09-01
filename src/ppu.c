@@ -379,18 +379,16 @@ static void load_tile ()
 
 	// get attribute byte
 	uint8_t attribute = vram[0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07)];
+	uint8_t palette = (attribute >> (((v >> 4) & 4) | (v & 2))) & 3;
 
 	uint8_t low = vram[tile];
 	uint8_t high = vram[tile + 8];
 	uint64_t colors = 0;
-	uint8_t palette = 0;
 
 	for (int i = 0; i < 8; i ++)
 	{
 		colors <<= 4;
-		palette = (attribute >> (((1 - (y & 1)) << 2) + ((i & 1) << 1))) & 3;
 		colors |= (palette << 2) | (low & 1) | ((high & 1) << 1);
-
 		low >>= 1;
 		high >>= 1;
 	}
