@@ -11,10 +11,13 @@
 #define SCREEN_H            240
 #define VRAM_SIZE           16 << 10
 
+// PPUCTRL
 #define GENERATE_NMI        0x80
-#define SPRITE_OVERFLOW     0x20
-#define SPRITE_ZERO_HIT     0x40
+
+// PPUSTATUS
 #define VBLANK              0x80
+#define SPRITE_ZERO_HIT     0x40
+#define SPRITE_OVERFLOW     0x20
 
 #define SPRITE_HEIGHT       8
 #define SPRITE_WIDTH        8
@@ -80,7 +83,8 @@ void print_pattern_table (uint16_t addr)
 
 void print_scroll ()
 {
-	printf ("coarse X = %2d, coarse Y = %2d, fine X = %d, fine Y = %d\n", v & 0x1F, (v >> 5) & 0x1F, x, (v >> 12) & 7);
+	printf (" [v = x%.4X, t = x%.4X, x = %d, w = %d] coarse X = %2d, coarse Y = %2d, fine X = %d, fine Y = %d\n",
+		v, t, x, flags & w, v & 0x1F, (v >> 5) & 0x1F, x, (v >> 12) & 7);
 }
 // DEBUGGERS ----------------------------------------------------------------------------------------------------
 
@@ -206,6 +210,7 @@ static void write_ppudata (uint8_t value)
 	else
 		vram[v] = value;
 
+	// printf ("  v += %d\n", 1 + ((ppu_registers[PPUCTRL] & 0x04) >> 2) * 31);
 	v += 1 + ((ppu_registers[PPUCTRL] & 0x04) >> 2) * 31;
 	// v %= 0x4000;
 }
@@ -345,31 +350,72 @@ static inline void increment_horizontal_scroll ()
 	}
 	else
 		v ++; // increment coarse X
+
 }
 
-/**
- *  Get background color and pixel value at x and y on the screen.
- */
-static uint8_t background_color (int dot, uint8_t *pixel)
+static uint64_t tiles = 0;
+
+static void load_tile ()
 {
-	// print_scroll();
-	dot = (dot & 7) + x;
+	tiles >>= 32;
+
 	// fine Y
 	uint8_t y = (v >> 12) & 7;
 	// get nametable byte
-	uint8_t tile = vram[0x2000 | (v & 0x0FFF)];
+	uint8_t nametable = vram[0x2000 | (v & 0x0FFF)];
 	// flagged background pattern tile table in ppuctrl
 	uint8_t table = (ppu_registers[PPUCTRL] & 0x10) >> 4;
-	// pattern location
-	uint16_t pattern = table * 0x1000 + tile * 0x10 + y;
+	// tile location
+	uint16_t tile = table * 0x1000 + nametable * 0x10 + y;
+
 	// get attribute byte
 	uint8_t attribute = vram[0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07)];
-	// palette index
-	uint8_t palette = (attribute >> (((1 - (y & 1)) << 2) + ((dot & 1) << 1))) & 3;
-	// compute color index within palette
-	*pixel = ((vram[pattern] >> (7 - dot)) & 1) | ((vram[pattern + 8] >> (6 - dot)) & 2);
 
-	return vram[0x3F00 + (palette << 2) + (*pixel)];
+	uint8_t low = vram[tile];
+	uint8_t high = vram[tile + 8];
+	uint64_t colors = 0;
+	uint8_t palette = 0;
+
+	for (int i = 0; i < 8; i ++)
+	{
+		colors <<= 4;
+		palette = (attribute >> (((1 - (y & 1)) << 2) + ((i & 1) << 1))) & 3;
+		colors |= (palette << 2) | (low & 1) | ((high & 1) << 1);
+
+		low >>= 1;
+		high >>= 1;
+	}
+	tiles |= colors << 32;
+}
+
+/**
+ *  Get background color (index in palette) and pixel value at x and y on the screen.
+ *  The pixel value can be used to see if this pixel is transparent by making the check pixel == 0.
+ */
+static uint8_t background_color (int dot, uint8_t *pixel)
+{
+	// printf ("DOT = %3d,", dot); print_scroll();
+	// dot = (dot & 7) + x;
+	// // fine Y
+	// uint8_t y = (v >> 12) & 7;
+	// // get nametable byte
+	// uint8_t tile = vram[0x2000 | (v & 0x0FFF)];
+	// // flagged background pattern tile table in ppuctrl
+	// uint8_t table = (ppu_registers[PPUCTRL] & 0x10) >> 4;
+	// // pattern location
+	// uint16_t pattern = table * 0x1000 + tile * 0x10 + y;
+	// // get attribute byte
+	// uint8_t attribute = vram[0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07)];
+	// // palette index
+	// uint8_t palette = (attribute >> (((1 - (y & 1)) << 2) + ((dot & 1) << 1))) & 3;
+	// // compute color index within palette
+	// *pixel = ((vram[pattern] >> (7 - dot)) & 1) | ((vram[pattern + 8] >> (6 - dot)) & 2);
+	//
+	// return vram[0x3F00 + (palette << 2) + (*pixel)];
+
+	uint8_t color = tiles >> (((dot & 7) + x) * 4);
+	*pixel = color & 0x3;
+	return vram[0x3F00 + (color & 0xF)];
 }
 
 /**
@@ -436,14 +482,14 @@ static void inline render_pixel (int x, int y)
 	        sprite_clr = 0;
 
 	// default palette index to background clear color
-	uint8_t palette_index = vram[0x3F00];
+	uint8_t color = vram[0x3F00];
 
 	// background
 	if (!((ppu_registers[PPUMASK] & 0x08) == 0 || ((ppu_registers[PPUMASK] & 0x02) == 0 && y < 8 && x < 8)))
 	{
 		bg_color = background_color (x, &bg_pixel);
 		if (bg_pixel != 0)
-			palette_index = bg_color;
+			color = bg_color;
 	}
 	// sprites
 	if (!((ppu_registers[PPUMASK] & 0x10) == 0 || ((ppu_registers[PPUMASK] & 0x4) == 0 && y < 8 && x < 8)))
@@ -480,12 +526,12 @@ static void inline render_pixel (int x, int y)
 						continue;
 				}
 				sprite_pixel = tmp;
-				palette_index = sprite_clr;
+				color = sprite_clr;
 			}
 		}
 	}
 	// render color
-	set_pixel_color (x, y, palette_index);
+	set_pixel_color (x, y, color);
 }
 
 /**
@@ -580,7 +626,7 @@ void nes_ppu_step ()
 	int visible_scanln = scanln < SCREEN_H;               // lines 0 -> 239
 
 	int dot = ppucc % PPUCC_PER_SCANLINE;
-	int visible_dot = dot >= 1 && dot <= SCREEN_W; // dot 1 -> 256, remember: first dot is idle
+	int visible_dot = dot >= 1 && dot <= 256; // dot 1 -> 256, remember: first dot is idle
 
 	if (RENDERING_ENABLED)
 	{
@@ -598,10 +644,11 @@ void nes_ppu_step ()
 				// copy vertical bits from t to v
 				v = (v & ~0x7BE0) | (t & 0x7BE0);
 			}
-			if ((dot >= 328 || visible_dot) && (dot & 7) == 0)
+			else if ((dot >= 321 || visible_dot) && (dot & 7) == 0)
 			{
+				// load next tile before scrolling
+				load_tile ();
 				// scroll horizontally on each 8th dot between dots 328 and 256 of the next scanline
-				// print_scroll ();
 				increment_horizontal_scroll ();
 				if (dot == 256) // scroll vertically
 					increment_vertical_scroll ();
@@ -618,7 +665,7 @@ void nes_ppu_step ()
 
 	if (dot == 1)
 	{
-		if (scanln == SCREEN_H + 1) // line 241
+		if (scanln == 241) // line 241
 		{
 			// Set VBLANK and generate NMI
 			ppu_registers[PPUSTATUS] |= VBLANK;
