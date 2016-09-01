@@ -416,6 +416,7 @@ static store_handler store_handlers[MAX_EVENT_HANDLERS];
 
 /**
  *  Store event handler for when we are modifying PPU registers.
+ *  Stops propagation as PPU registers are special.
  */
 static int on_ppu_register_write (uint16_t address, uint8_t value)
 {
@@ -429,7 +430,7 @@ static int on_ppu_register_write (uint16_t address, uint8_t value)
 
 /**
  *  Store event handler for when writing to OAM_DMA register.
- *  Always returns 0 (OK).
+ *  Stops propagation as it is not needed to be stored in RAM.
  */
 static int on_dma_write (uint16_t address, uint8_t value)
 {
@@ -556,12 +557,12 @@ void nes_cpu_init ()
 
 	// init memory
 	// memset (memory, 0, PRG_ROM_LOCATION);
-	for (int i = 0; i < 0x800; i ++)
-		memory[i] = 0xFF;
-	memory[0x0008] = 0xF7;
-	memory[0x0009] = 0xEF;
-	memory[0x000A] = 0xDF;
-	memory[0x000F] = 0xBF;
+	// for (int i = 0; i < 0x800; i ++)
+	// 	memory[i] = 0xFF;
+	// memory[0x0008] = 0xF7;
+	// memory[0x0009] = 0xEF;
+	// memory[0x000A] = 0xDF;
+	// memory[0x000F] = 0xBF;
 	// memory[0x4015] = 0xF7;
 	// memory[0x4017] = 0xF7;
 
@@ -596,7 +597,7 @@ static inline void interrupt (uint16_t _pc)
 	push (pc >> 8); // high
 	push (pc);      // low
 	// push PS
-	push (ps);
+	push (ps | BREAK);
 	// set new PC
 	pc = _pc;
 	ps |= INTERRUPT; // disable interrupt
@@ -605,8 +606,7 @@ static inline void interrupt (uint16_t _pc)
 
 /**
  *  Preferred abstract function for getting a value depending on addressing mode.
- *  Will make sure to call correct functions for read events and skip in case
- *  we are after the accumulator.
+ *  Will make sure to call correct functions for read events and skip in case we are after the accumulator.
  */
 static uint8_t get_value (addressing_mode mode)
 {
@@ -620,8 +620,7 @@ static uint8_t get_value (addressing_mode mode)
 }
 
 /**
- *  Convenience function for setting flags depending of the value of
- *  value parameter.
+ *  Convenience function for setting flags depending of the value of value parameter.
  */
 static inline void set_flags (uint8_t value, uint8_t flags)
 {
@@ -1436,11 +1435,11 @@ static void nmi ()
 
 
 /**
- *  irq generates an interrupt if the interrupts are not disabled, and loads the IRQ vector.
+ *  irq generates an interrupt, if the interrupts are not disabled, and loads the IRQ vector.
  */
 static void irq ()
 {
-	if (ps & INTERRUPT)
+	if (ps & ~INTERRUPT)
 	{
 		uint16_t irq_vector = memory[IRQ_VECTOR + 1];
 		irq_vector = irq_vector << 8 | memory[IRQ_VECTOR];
