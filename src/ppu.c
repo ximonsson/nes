@@ -623,10 +623,7 @@ void nes_ppu_step ()
 		if (visible_dot && visible_scanln)
 			render_pixel (dot - 1, scanln); // render pixel to screen
 
-		// TODO revise if we need to implement correct fetching of nametable bytes
-		//      - so far render_pixel and background_color computes that for us.
-
-		// Scroll !!
+		// Scroll
 		if (visible_scanln || pre_scanln)
 		{
 			if (pre_scanln && dot >= 280 && dot <= 304)
