@@ -6,32 +6,12 @@
 #include <stdint.h>
 #include <pthread.h>
 
-/* Stack location in memory */
-#define STACK_LOCATION      0x0100
-
-#define PRG_ROM_LOCATION    0x8000
-#define PRG_RAM_LOCATION    0x6000
-
 #define OAM_DMA_REGISTER    0x4014
-
-/* Interrupt vector memory locations */
-#define NMI_VECTOR          0xFFFA
-#define RST_VECTOR          0xFFFC
-#define IRQ_VECTOR          0xFFFE
-
 /* Controllers port memory locations */
 #define CTRL_ONE_MEM_LOC    0x4016
 #define CTRL_TWO_MEM_LOC    0x4017
-
-#define PPU_CC_PER_CPU_CC   3
-
-#define PAGE_SIZE           256
-
-#define MEMORY_SIZE         (65 << 10)
-
 /* DIFF_PAGE returns true or false depending on if x and y are on different pages */
 #define DIFF_PAGE(x, y) ((x & 0xFF00) != (y & 0xFF00))
-
 
 /**
 *  Processor Status Flags
@@ -69,7 +49,6 @@ typedef enum addressing_modes
 }
 addressing_mode;
 
-
 enum status_flags
 {
 	PAGE_CROSS  = 0x01,
@@ -105,6 +84,7 @@ static uint8_t  sp;
 static int cpucc;
 
 // Memory
+#define MEMORY_SIZE (65 << 10)
 static uint8_t memory[MEMORY_SIZE];
 
 
@@ -113,17 +93,10 @@ void __memory__ (void **p, int location)
 	*p = memory + location;
 }
 
-/**
-*  Set signal in CPU.
-*/
-void nes_cpu_signal (enum nes_cpu_signal sig)
-{
-	signals |= sig;
-}
 
-/**
-*  Load PRG ROM data to bank.
-*/
+#define PRG_RAM_LOCATION 0x6000
+#define PRG_ROM_LOCATION 0x8000
+/* Load PRG ROM data to bank. */
 void nes_cpu_load_prg_rom_bank (void *data, int bank)
 {
 	memcpy
@@ -134,7 +107,7 @@ void nes_cpu_load_prg_rom_bank (void *data, int bank)
 	);
 }
 
-
+/* Load data to PRG ROM. */
 void nes_cpu_load_prg_rom (void *data)
 {
 	memcpy
@@ -373,18 +346,18 @@ static uint16_t calculate_address (addressing_mode mode)
 
 /* end ADDRESSING FUNCTIONS ----------------------------------------------------------- */
 
-/**
- *  Push a value on to the stack.
- */
+
+/* Stack location in memory */
+#define STACK_LOCATION 0x0100
+
+/* Push a value on to the stack. */
 static void push (uint8_t value)
 {
 	memory[STACK_LOCATION | sp] = value;
 	sp --;
 }
 
-/**
- *  Pop a value from the stack.
- */
+/* Pop a value from the stack. */
 static uint8_t pop ()
 {
 	sp ++;
@@ -543,9 +516,9 @@ static uint8_t mem_read (uint16_t address)
 	return b;
 }
 
-/**
- *  Init the CPU to its startup state.
- */
+
+#define RST_VECTOR 0xFFFC
+/* Init the CPU to its startup state. */
 void nes_cpu_init ()
 {
 	// default values of registers
@@ -554,17 +527,6 @@ void nes_cpu_init ()
 	y   = 0;
 	sp  = 0xFD;
 	ps  = 0x24;
-
-	// init memory
-	// memset (memory, 0, PRG_ROM_LOCATION);
-	// for (int i = 0; i < 0x800; i ++)
-	// 	memory[i] = 0xFF;
-	// memory[0x0008] = 0xF7;
-	// memory[0x0009] = 0xEF;
-	// memory[0x000A] = 0xDF;
-	// memory[0x000F] = 0xBF;
-	// memory[0x4015] = 0xF7;
-	// memory[0x4017] = 0xF7;
 
 	flags = 0;
 	cpucc = 0;
@@ -587,6 +549,15 @@ void nes_cpu_init ()
 }
 
 /**
+ *  Set signal in CPU.
+ *  Used to signal interrupt is required.
+ */
+void nes_cpu_signal (enum nes_cpu_signal sig)
+{
+	signals |= sig;
+}
+
+/**
  *  Handle interrupt.
  *  Does the necessary pushing to stack and jump to the new program counter.
  *  An interrupt takes 7 cycles to perform.
@@ -602,6 +573,29 @@ static inline void interrupt (uint16_t _pc)
 	pc = _pc;
 	ps |= INTERRUPT; // disable interrupt
 	cpucc += 7;
+}
+
+
+#define NMI_VECTOR 0xFFFA
+/* nmi generates an interrupt and loads the NMI vector. */
+static void nmi ()
+{
+	uint16_t nmi_vector = memory[NMI_VECTOR + 1];
+	nmi_vector = nmi_vector << 8 | memory[NMI_VECTOR];
+	interrupt (nmi_vector);
+}
+
+
+#define IRQ_VECTOR 0xFFFE
+/* irq generates an interrupt, if the interrupts are not disabled, and loads the IRQ vector. */
+static void irq ()
+{
+	if (ps & ~INTERRUPT)
+	{
+		uint16_t irq_vector = memory[IRQ_VECTOR + 1];
+		irq_vector = irq_vector << 8 | memory[IRQ_VECTOR];
+		interrupt (irq_vector);
+	}
 }
 
 /**
@@ -1423,30 +1417,6 @@ static operation operations[16][16] =
 /* end CPU INSTRUCTIONS --------------------------------------------------------------- */
 
 
-/**
- *  nmi generates an interrupt and loads the NMI vector.
- */
-static void nmi ()
-{
-	uint16_t nmi_vector = memory[NMI_VECTOR + 1];
-	nmi_vector = nmi_vector << 8 | memory[NMI_VECTOR];
-	interrupt (nmi_vector);
-}
-
-
-/**
- *  irq generates an interrupt, if the interrupts are not disabled, and loads the IRQ vector.
- */
-static void irq ()
-{
-	if (ps & ~INTERRUPT)
-	{
-		uint16_t irq_vector = memory[IRQ_VECTOR + 1];
-		irq_vector = irq_vector << 8 | memory[IRQ_VECTOR];
-		interrupt (irq_vector);
-	}
-}
-
 #ifdef VERBOSE
 void print_operation (operation* op) {
 	char reg_string[128] = {0};
@@ -1464,6 +1434,8 @@ void print_operation (operation* op) {
 }
 #endif
 
+
+#define PPU_CC_PER_CPU_CC 3
 
 int nes_cpu_step ()
 {
