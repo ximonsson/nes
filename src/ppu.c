@@ -353,8 +353,17 @@ static inline void increment_horizontal_scroll ()
 
 }
 
+/**
+ *  tiles containes color information for the next 2 tiles (16 pixels).
+ *  From low to high bits, each 4-bit value is the palette index of the pixel on the current scanline for dot 0 to 15.
+ *  To fetch for example color(dot X) = (tiles >> (4 * X)) & 0xF.
+ */
 static uint64_t tiles = 0;
 
+/**
+ *  load_tile loads the next tile in relevance to the current scrolling (value of loopy_V).
+ *  The old 32-bit data for the previous tile is shifted out, and the new tile data is loaded into the high bits of tiles.
+ */
 static void load_tile ()
 {
 	tiles >>= 32;
@@ -394,25 +403,6 @@ static void load_tile ()
  */
 static uint8_t background_color (int dot, uint8_t *pixel)
 {
-	// printf ("DOT = %3d,", dot); print_scroll();
-	// dot = (dot & 7) + x;
-	// // fine Y
-	// uint8_t y = (v >> 12) & 7;
-	// // get nametable byte
-	// uint8_t tile = vram[0x2000 | (v & 0x0FFF)];
-	// // flagged background pattern tile table in ppuctrl
-	// uint8_t table = (ppu_registers[PPUCTRL] & 0x10) >> 4;
-	// // pattern location
-	// uint16_t pattern = table * 0x1000 + tile * 0x10 + y;
-	// // get attribute byte
-	// uint8_t attribute = vram[0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07)];
-	// // palette index
-	// uint8_t palette = (attribute >> (((1 - (y & 1)) << 2) + ((dot & 1) << 1))) & 3;
-	// // compute color index within palette
-	// *pixel = ((vram[pattern] >> (7 - dot)) & 1) | ((vram[pattern + 8] >> (6 - dot)) & 2);
-	//
-	// return vram[0x3F00 + (palette << 2) + (*pixel)];
-
 	uint8_t color = tiles >> (((dot & 7) + x) * 4);
 	*pixel = color & 0x3;
 	return vram[0x3F00 + (color & 0xF)];
