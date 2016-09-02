@@ -452,6 +452,9 @@ static void inline set_pixel_color (int x, int y, uint8_t pindex)
 		*(p + i) *= mod;
 }
 
+
+#define SHOW_SPRITES    (ppu_registers[PPUMASK] & 0x10)
+#define SHOW_BACKGROUND (ppu_registers[PPUMASK] & 0x08)
 /**
  *  render_pixel wil compute what color the pixel @ (x, y) will have and render it to the virtual screen.
  *  Computation of pixel is done by taking into account background/sprite priorities and looking at nametables/sprites.
@@ -464,16 +467,17 @@ static void inline render_pixel (int x, int y)
 
 	// default palette index to background clear color
 	uint8_t color = vram[0x3F00];
+	uint8_t mask = ppu_registers[PPUMASK];
 
 	// background
-	if (!((ppu_registers[PPUMASK] & 0x08) == 0 || ((ppu_registers[PPUMASK] & 0x02) == 0 && y < 8 && x < 8)))
+	if (SHOW_BACKGROUND && !(x < 8 && (mask & 2) == 0))
 	{
 		bg_color = background_color (x, &bg_pixel);
 		if (bg_pixel)
 			color = bg_color;
 	}
 	// sprite
-	if (!((ppu_registers[PPUMASK] & 0x10) == 0 || ((ppu_registers[PPUMASK] & 0x4) == 0 && y < 8 && x < 8)))
+	if (SHOW_SPRITES && !((mask & 0x04) == 0 && x < 8))
 	{
 		uint8_t *sprite;
 		int sindex, x_off, y_off;
