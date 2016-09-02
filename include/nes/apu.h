@@ -37,7 +37,7 @@ nes_apu_register;
  *  nes_apu_init initializes the APU.
  *  Returns non zero on failure.
  */
-int nes_apu_init () ;
+void nes_apu_reset () ;
 
 /**
  *  nes_apu_register_write writes value to the APU's register associated with the given address.

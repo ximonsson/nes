@@ -4,7 +4,7 @@ AR = ar
 BIN     = bin
 BUILD   = build
 SRC_DIR = src
-LIBS    = libs
+LIBS    = lib
 EXEC    = $(BIN)/nes
 
 SRC  = cpu.c io.c nes.c ppu.c apu.c
@@ -25,7 +25,7 @@ endif
 
 INCLUDES = -I./include
 
-LDFLAGS += -L./libs -lSDL2 -lGLESv2 -lpthread -lnes
+LDFLAGS += -L./$(LIBS) -lSDL2 -lGLESv2 -lpthread -lnes
 
 ARCMD = rcs
 

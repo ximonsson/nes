@@ -24,7 +24,7 @@
 #define SECONDARY_OAM_SIZE  8
 #define PRIMARY_OAM_SIZE    64
 
-
+/* Status flags */
 enum _flags
 {
 	w = 0x1,
@@ -33,30 +33,27 @@ enum _flags
 };
 static int flags;
 
-// static uint8_t *ppuctrl;
-// static uint8_t *ppumask;
-// static uint8_t *ppustatus;
-// static uint8_t *oamaddr;
-// static uint8_t *oamdata;
-// static uint8_t *ppuscroll;
-// static uint8_t *ppuaddr;
-// static uint8_t *ppudata;
-
+/* Pointer to registers in RAM */
 static uint8_t  *ppu_registers;
+
+/* PPU VRAM */
 static uint8_t   vram[VRAM_SIZE];
 static uint8_t   vram_buffer;
+
+/* pixel data to be displayed */
 static uint8_t   screen[SCREEN_W * SCREEN_H * 3];
 static uint8_t   screen_buffer[SCREEN_W * SCREEN_H * 3];
+
+/* OAM data */
 static uint8_t   primary_oam[64 * 4];
 static uint8_t   secondary_oam[8];
 
-/**
- *  PPU scrolling registers.
- */
+/* PPU scrolling registers. */
 static uint16_t  t;
 static uint16_t  v;
 static uint8_t   x;
 
+/* PPU clock cycles */
 static int ppucc;
 
 
@@ -89,25 +86,19 @@ void print_scroll ()
 // DEBUGGERS ----------------------------------------------------------------------------------------------------
 
 
-void nes_ppu_init ()
+void nes_ppu_reset ()
 {
 	// init ppu registers
 	__memory__ ((void **) &ppu_registers, PPU_REGISTER_MEM_LOC);
-	for (uint8_t *p = ppu_registers; p - ppu_registers < 0x2000; p += 8)
-		p[PPUSTATUS] = 0xA0;
+	ppu_registers[PPUSTATUS] = 0xA0;
 
 	// reset flags
 	flags = 0;
 	ppucc = SCREEN_H * PPUCC_PER_SCANLINE - 1; // we start in vblank
 
 	// reset scrolling and VRAM
-	// memset (vram, 0, VRAM_SIZE);
 	t = v = x = 0;
 	vram_buffer = 0;
-
-	// clear OAM
-	// memset (primary_oam,   0, 64 * 4);
-	// memset (secondary_oam, 0, 8 * sizeof (int));
 
 	// clear screen
 	memset (screen, 0, SCREEN_W * SCREEN_H * 3);
@@ -406,11 +397,11 @@ static uint8_t background_color (int dot, uint8_t* pixel)
 }
 
 /**
- *  Get sprite color and pixel value at x and y coordinates within the sprite.
+ *  Get sprite color and pixel value at x and y coordinates within the sprite @ index within primary OAM.
  */
-static uint8_t sprite_color (int sprite_index, int x, int y, uint8_t *pixel)
+static uint8_t sprite_color (int index, int x, int y, uint8_t *pixel)
 {
-	uint8_t *sprite = primary_oam + sprite_index * 4;
+	uint8_t *sprite = primary_oam + index * 4;
 	int h = SPRITE_HEIGHT + ((ppu_registers[PPUCTRL] & 0x20) >> 2);
 
 	int pattern;

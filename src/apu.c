@@ -48,9 +48,9 @@ typedef void (*writer) (uint8_t value) ;
 writer writers[12];
 
 
-int nes_apu_init ()
+void nes_apu_reset ()
 {
-	return 0;
+
 }
 
 

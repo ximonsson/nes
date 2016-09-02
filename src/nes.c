@@ -162,9 +162,9 @@ void nes_run (const char *file)
 	}
 
 	// init hardware
-	nes_cpu_init ();
-	nes_ppu_init ();
-	nes_apu_init ();
+	nes_cpu_reset ();
+	nes_ppu_reset ();
+	nes_apu_reset ();
 
 	// run the game
 	// struct timespec timer;

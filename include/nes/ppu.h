@@ -59,7 +59,7 @@ nes_ppu_register;
  *  This needs to be called before running the game to make
  *  sure it runs correctly.
  */
-void nes_ppu_init ();
+void nes_ppu_reset ();
 
 /**
  *  Render a number of pixels to the frame buffer.

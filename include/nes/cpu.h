@@ -25,7 +25,7 @@ enum nes_cpu_signal
  *  This must be performed before run is called to make sure
  *  the game will run properly.
  */
-void nes_cpu_init () ;
+void nes_cpu_reset () ;
 
 /**
  *  nes_cpu_step reads one instruction and executes.

@@ -513,7 +513,7 @@ static uint8_t mem_read (uint16_t address)
 
 #define RST_VECTOR 0xFFFC
 /* Init the CPU to its startup state. */
-void nes_cpu_init ()
+void nes_cpu_reset ()
 {
 	// default values of registers
 	a   = 0;
