@@ -4,25 +4,27 @@
 #include <stdint.h>
 #include <string.h>
 
+// # of cycles the PPU runs per frame
+#define PPUCC_PER_FRAME PPUCC_PER_SCANLINE * SCANLINES_PER_FRAME
 
-#define PPUCC_PER_FRAME     PPUCC_PER_SCANLINE * SCANLINES_PER_FRAME
-
-#define SCREEN_W            256
-#define SCREEN_H            240
-#define VRAM_SIZE           16 << 10
+// Screen and sprite sizes
+#define SCREEN_W      256
+#define SCREEN_H      240
+#define SPRITE_HEIGHT   8
+#define SPRITE_WIDTH    8
+#define TILE_SIZE      16
 
 // PPUCTRL
-#define GENERATE_NMI        0x80
+#define GENERATE_NMI 0x80
 
 // PPUSTATUS
-#define VBLANK              0x80
-#define SPRITE_ZERO_HIT     0x40
-#define SPRITE_OVERFLOW     0x20
+#define VBLANK          0x80
+#define SPRITE_ZERO_HIT 0x40
+#define SPRITE_OVERFLOW 0x20
 
-#define SPRITE_HEIGHT       8
-#define SPRITE_WIDTH        8
 #define SECONDARY_OAM_SIZE  8
-#define PRIMARY_OAM_SIZE    64
+#define PRIMARY_OAM_SIZE   64
+#define VRAM_SIZE    16 << 10
 
 /* Status flags */
 enum _flags
@@ -357,6 +359,7 @@ static uint64_t tiles = 0;
  */
 static void load_tile ()
 {
+	// shift out previous tile
 	tiles >>= 32;
 
 	// fine Y
@@ -410,8 +413,8 @@ static uint8_t sprite_color (int index, int x, int y, uint8_t *pixel)
 	else // 8x16 mode
 		pattern = ((sprite[1] & 1) << 8) + (sprite[1] & ~1) * 0x10;
 
-	x += ((sprite[2] & 0x40) >> 6) * (7 - 2 * x); // think this is a general formula in case sprite is flipped.
-	y += ((sprite[2] & 0x80) >> 7) * (h - 1 - 2 * y);
+	x += ((sprite[2] >> 6) & 1) * (7 - 2 * x); // think this is a general formula in case sprite is flipped.
+	y += ((sprite[2] >> 7) & 1) * (h - 1 - 2 * y);
 
 	// get pixel (0, 1 or 2?) (within palette?)
 	// fan det är mycket magi som händer här, jag kommmer inte ihåg hur jag gjorde detta....
@@ -489,7 +492,7 @@ static void inline render_pixel (int x, int y)
 				continue; // sprite too far away
 
 			x_off = x - sprite[3];
-			y_off = y - sprite[0];
+			y_off = y - sprite[0] - 1; // the -1 fixes a lot of stuff, not sure why this is needed though
 			sprite_clr = sprite_color (sindex, x_off, y_off, &pixel);
 			if (pixel)
 			{
@@ -533,7 +536,7 @@ const uint8_t* nes_screen_buffer ()
  */
 static void sprite_evaluation ()
 {
-	int scanln = ppucc / PPUCC_PER_SCANLINE + 1; // next scanline
+	int scanln = ppucc / PPUCC_PER_SCANLINE; // next scanline
 	int i = 0;
  	uint8_t* y = primary_oam;
 	int h = 8 + ((ppu_registers[PPUCTRL] & 0x20) >> 2);
