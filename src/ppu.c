@@ -470,14 +470,14 @@ static void inline render_pixel (int x, int y)
 	uint8_t mask = ppu_registers[PPUMASK];
 
 	// background
-	if (SHOW_BACKGROUND && !(x < 8 && (mask & 2) == 0))
+	if (SHOW_BACKGROUND && (x >= 8 || (mask & 2)))
 	{
 		bg_color = background_color (x, &bg_pixel);
 		if (bg_pixel)
 			color = bg_color;
 	}
 	// sprite
-	if (SHOW_SPRITES && !((mask & 0x04) == 0 && x < 8))
+	if (SHOW_SPRITES && (x >= 8 || (mask & 4)))
 	{
 		uint8_t *sprite;
 		int sindex, x_off, y_off;
