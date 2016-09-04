@@ -347,7 +347,7 @@ static inline void increment_horizontal_scroll ()
 }
 
 /**
- *  tiles containes color information for the next 2 tiles (16 pixels).
+ *  tiles contains color information for the next 2 tiles (16 pixels).
  *  From low to high bits, each 4-bit value is the palette index of the pixel on the current scanline for dot 0 to 15.
  *  To fetch for example color(dot X) = (tiles >> (4 * X)) & 0xF.
  */
@@ -396,11 +396,12 @@ static uint8_t background_color (int dot, uint8_t* pixel)
 {
 	uint8_t color = (tiles >> (((dot & 7) + x) << 2)) & 0xF;
 	*pixel = color & 3;
-	return vram[0x3F00 + color];
+	return vram[0x3F00 | color];
 }
 
 /**
  *  Get sprite color and pixel value at x and y coordinates within the sprite @ index within primary OAM.
+ *  The value set to pixel can be used to determin if the pixel is transparent or not, by making the check pixel == 0.
  */
 static uint8_t sprite_color (int index, int x, int y, uint8_t *pixel)
 {
@@ -419,7 +420,7 @@ static uint8_t sprite_color (int index, int x, int y, uint8_t *pixel)
 	// get pixel (0, 1 or 2?) (within palette?)
 	// fan det är mycket magi som händer här, jag kommmer inte ihåg hur jag gjorde detta....
 	*pixel = ((vram[pattern + y] >> (7 - x)) & 1) | (((vram[pattern + y + h] >> (7 - x)) << 1) & 2);
-	return vram[0x3F10 + (sprite[2] & 0x3) * 4 + (*pixel)];
+	return vram[0x3F10 | (sprite[2] & 0x3) << 2 | (*pixel)];
 }
 
 /* set_pixel_color renders to virtual screen @ (x, y) the color pointed out by pindex from the palettee */
@@ -496,7 +497,7 @@ static void inline render_pixel (int x, int y)
 				continue; // sprite too far away
 
 			x_off = x - sprite[3];
-			y_off = y - sprite[0] - 1; // the -1 fixes a lot of stuff, not sure why this is needed though
+			y_off = y - sprite[0] - 1; // TODO understand why -1
 			sprite_clr = sprite_color (sindex, x_off, y_off, &pixel);
 			if (pixel)
 			{
@@ -544,21 +545,21 @@ static void sprite_evaluation ()
 	int i = 0;
  	uint8_t* y = primary_oam;
 	int h = 8 + ((ppu_registers[PPUCTRL] & 0x20) >> 2);
-	int sprites = 0;
+	int n = 0;
 	memset (secondary_oam, 0xFF, SECONDARY_OAM_SIZE);
 
 	// loop through primary OAM and store indices to sprites in secondary OAM.
-	for (i = 0; i < PRIMARY_OAM_SIZE && sprites < SECONDARY_OAM_SIZE; i ++, y += 4)
+	for (i = 0; i < PRIMARY_OAM_SIZE && n < SECONDARY_OAM_SIZE; i ++, y += 4)
 	{
-		if ((*y) < SCREEN_H - 1 && (*y) <= scanln && scanln < (*y) + h)
+		if ((*y) <= scanln && scanln < (*y) + h)
 		{
 			// sprite in range
-			secondary_oam[sprites] = i;
-			sprites ++;
+			secondary_oam[n] = i;
+			n ++;
 		}
 	}
 	// in case we found 8, check for overflow
-	if (sprites == SECONDARY_OAM_SIZE)
+	if (n == SECONDARY_OAM_SIZE)
 	{
 		for (int m = 0; i < PRIMARY_OAM_SIZE; i ++, y += 4)
 		{
@@ -605,11 +606,11 @@ void nes_ppu_step ()
 {
 	tick (); // go forward one cycle
 
-	int scanln = ppucc / PPUCC_PER_SCANLINE;
+	int scanln = ppucc / PPUCC_PER_SCANLINE;              // line
 	int pre_scanln = scanln == (SCANLINES_PER_FRAME - 1); // line 261
 	int visible_scanln = scanln < SCREEN_H;               // lines 0 -> 239
 
-	int dot = ppucc % PPUCC_PER_SCANLINE;
+	int dot = ppucc % PPUCC_PER_SCANLINE;     // dot
 	int visible_dot = dot >= 1 && dot <= 256; // dot 1 -> 256, remember: first dot is idle
 
 	if (RENDERING_ENABLED)
@@ -640,6 +641,8 @@ void nes_ppu_step ()
 				v = (v & ~0x041F) | (t & 0x041F);
 				if (visible_scanln)
 					sprite_evaluation (); // evaluate sprites for next scanline
+				else
+					memset (secondary_oam, 0xFF, SECONDARY_OAM_SIZE);
 			}
 		}
 	}
@@ -653,7 +656,7 @@ void nes_ppu_step ()
 			flags |= nmi_occurred;
 			if (ppu_registers[PPUCTRL] & GENERATE_NMI)
 			{
-				// TODO i have seen implementations where they delay this a number of cycles
+				// TODO i have seen implementations where they delay this a number of cycles to fix timings.
 				nes_cpu_signal (NMI);
 			}
 		}
