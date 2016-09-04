@@ -194,8 +194,10 @@ static void write_ppudata (uint8_t value)
 			vram[i] = value;
 	}
 	// mirror nametables
-	else if (v >= 0x2000 && v % 0x1000 < 0xF00)
+	//else if (v >= 0x2000 && v % 0x1000 < 0xF00)
+	else if (v >= 0x2000)
 	{
+		// TODO this is probably a little more complex considering mirroring of nametables
 		vram[0x2000 + v % 0x1000] =
 		vram[0x3000 + v % 0x1000] = value;
 	}
@@ -203,9 +205,8 @@ static void write_ppudata (uint8_t value)
 	else
 		vram[v] = value;
 
-	// printf ("  v += %d\n", 1 + ((ppu_registers[PPUCTRL] & 0x04) >> 2) * 31);
 	v += 1 + ((ppu_registers[PPUCTRL] & 0x04) >> 2) * 31;
-	// v %= 0x4000;
+	v &= 0x3FFF;
 }
 
 /* Writer functions to PPU registers. Perform necessary modifications to PPU. */
@@ -264,20 +265,19 @@ static uint8_t read_oamdata ()
 /* Read < PPUDATA $(2007) */
 static uint8_t read_ppudata ()
 {
-	uint8_t ret = 0;
-	if ((v % 0x4000) < 0x3F00) // normal read
+	uint8_t ret = vram[v];
+	if (v < 0x3F00) // normal read
 	{
 		ret = vram_buffer;
 		vram_buffer = vram[v];
 	}
 	else // palette read
 	{
-		ret = vram[v];
 		vram_buffer = vram[v - 0x1000];
 	}
 	// increment and wrap
 	v += 1 + ((ppu_registers[PPUCTRL] & 0x04) >> 2) * 31;
-	// v %= 0x4000;
+	v &= 0x3FFF;
 	return ret;
 }
 
