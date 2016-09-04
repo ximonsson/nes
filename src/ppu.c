@@ -410,13 +410,14 @@ static uint8_t sprite_color (int index, int x, int y, uint8_t *pixel)
 
 	int pattern;
 	if (h == 8) // 8x8 mode
-		pattern = ((ppu_registers[PPUCTRL] & 0x08) << 5) + (sprite[1] << 4);
+		pattern = ((ppu_registers[PPUCTRL] & 0x08) << 9) + (sprite[1] << 4);
 	else // 8x16 mode
-		pattern = ((sprite[1] & 1) << 8) + ((sprite[1] & ~1) << 4) + (y & 8);
+		pattern = ((sprite[1] & 1) << 12) + ((sprite[1] & 0xFE) << 4) + ((y << 1) & 0x10);
 
 	// the formulas below solve flipping of sprites, but still keeps it correct if not flipped
+	y &= 7;
 	x += ((sprite[2] >> 6) & 1) * (7 - 2 * x);
-	y += ((sprite[2] >> 7) & 1) * (h - 1 - 2 * y);
+	y += ((sprite[2] >> 7) & 1) * (7 - 2 * y);
 
 	// get pixel (0, 1 or 2?) (within palette?)
 	uint8_t low  = vram[pattern + y];
