@@ -405,21 +405,23 @@ static uint8_t background_color (int dot, uint8_t* pixel)
  */
 static uint8_t sprite_color (int index, int x, int y, uint8_t *pixel)
 {
-	uint8_t *sprite = primary_oam + index * 4;
+	uint8_t *sprite = primary_oam + (index << 2);
 	int h = SPRITE_HEIGHT + ((ppu_registers[PPUCTRL] & 0x20) >> 2);
 
 	int pattern;
 	if (h == 8) // 8x8 mode
-		pattern = ((ppu_registers[PPUCTRL] & 0x08) << 5) + sprite[1] * 0x10;
+		pattern = ((ppu_registers[PPUCTRL] & 0x08) << 5) + (sprite[1] << 4);
 	else // 8x16 mode
-		pattern = ((sprite[1] & 1) << 8) + (sprite[1] & ~1) * 0x10;
+		pattern = ((sprite[1] & 1) << 8) + ((sprite[1] & ~1) << 4) + (y & 8);
 
-	x += ((sprite[2] >> 6) & 1) * (7 - 2 * x); // think this is a general formula in case sprite is flipped.
+	// the formulas below solve flipping of sprites, but still keeps it correct if not flipped
+	x += ((sprite[2] >> 6) & 1) * (7 - 2 * x);
 	y += ((sprite[2] >> 7) & 1) * (h - 1 - 2 * y);
 
 	// get pixel (0, 1 or 2?) (within palette?)
-	// fan det är mycket magi som händer här, jag kommmer inte ihåg hur jag gjorde detta....
-	*pixel = ((vram[pattern + y] >> (7 - x)) & 1) | (((vram[pattern + y + h] >> (7 - x)) << 1) & 2);
+	uint8_t low  = vram[pattern + y];
+	uint8_t high = vram[pattern + y + 8];
+	*pixel = ((low >> (7 - x)) & 1) | (((high >> (7 - x)) << 1) & 2);
 	return vram[0x3F10 | (sprite[2] & 0x3) << 2 | (*pixel)];
 }
 
@@ -541,12 +543,11 @@ const uint8_t* nes_screen_buffer ()
  */
 static void sprite_evaluation ()
 {
-	int scanln = ppucc / PPUCC_PER_SCANLINE; // next scanline
-	int i = 0;
+	int scanln = ppucc / PPUCC_PER_SCANLINE;
  	uint8_t* y = primary_oam;
+	int i = 0;
 	int h = 8 + ((ppu_registers[PPUCTRL] & 0x20) >> 2);
 	int n = 0;
-	memset (secondary_oam, 0xFF, SECONDARY_OAM_SIZE);
 
 	// loop through primary OAM and store indices to sprites in secondary OAM.
 	for (i = 0; i < PRIMARY_OAM_SIZE && n < SECONDARY_OAM_SIZE; i ++, y += 4)
@@ -570,7 +571,7 @@ static void sprite_evaluation ()
 				break; // jag tror man ska gå igenom allt, men fuck it.
 			}
 			m ++; // sprite overflow bug
-			m %= 4;
+			m &= 3;
 		}
 	}
 }
@@ -639,10 +640,10 @@ void nes_ppu_step ()
 			{
 				// copy horizontal bits from t to v
 				v = (v & ~0x041F) | (t & 0x041F);
+				// clear sprite data from the last scanline
+				memset (secondary_oam, 0xFF, SECONDARY_OAM_SIZE);
 				if (visible_scanln)
 					sprite_evaluation (); // evaluate sprites for next scanline
-				else
-					memset (secondary_oam, 0xFF, SECONDARY_OAM_SIZE);
 			}
 		}
 	}
