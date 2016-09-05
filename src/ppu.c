@@ -348,19 +348,18 @@ static uint8_t read_oamdata ()
 /* Read < PPUDATA $(2007) */
 static uint8_t read_ppudata ()
 {
-	uint8_t ret = vram[v];
+	uint8_t ret = vram_buffer;
 	if (v >= PALETTE_RAM) // palette read
 	{
+		ret = vram[v];
 		vram_buffer = vram[mirror_address (v - 0x1000)];
 	}
 	else if (v >= NAMETABLE_0) // nametable read
 	{
-		ret = vram_buffer;
 		vram_buffer = vram[mirror_address (v)];
 	}
 	else // v < $2000: pattern read
 	{
-		ret = vram_buffer;
 		vram_buffer = vram[v];
 	}
 	// increment and wrap
@@ -462,7 +461,7 @@ static void load_tile ()
 	uint8_t high = vram[tile + 8];
 
 	// get attribute byte and compute background palette for this tile
-	uint8_t attribute = vram[0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07)];
+	uint8_t attribute = vram[mirror_address (0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07))];
 	uint8_t palette = (attribute >> (((v >> 4) & 4) | (v & 2))) & 3;
 
 	uint64_t colors = 0;
