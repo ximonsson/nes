@@ -146,7 +146,7 @@ static uint16_t zero_page_y ()
 static uint16_t absolute ()
 {
 	uint16_t addr = memory[pc + 1];
-	addr = addr << 8 | memory[pc];
+	addr = (addr << 8) | memory[pc];
 	return addr;
 }
 
@@ -171,16 +171,11 @@ static uint16_t absolute_y ()
 
 static uint16_t indirect ()
 {
-	uint8_t l = memory[pc];
-	uint16_t h = memory[pc + 1];
-	h <<= 8;
+	uint16_t loc = memory[pc + 1];
+	loc = (loc << 8) | memory[pc];
 
-	uint16_t lo = h | l;
-	l ++;
-	uint16_t hi = h | l;
-
-	uint16_t addr = memory[hi];
-	addr = addr << 8 | memory[lo];
+	uint16_t addr = memory[loc + 1];
+	addr = (addr << 8) | memory[loc];
 
 	return addr;
 }
@@ -191,7 +186,7 @@ static uint16_t indexed_indirect ()
 	uint8_t l = memory[pc] + x;
 	uint8_t h = l + 1;
 	uint16_t addr = memory[h];
-	addr = addr << 8 | memory[l];
+	addr = (addr << 8) | memory[l];
 
 	return addr;
 }
@@ -202,7 +197,7 @@ static uint16_t indirect_indexed ()
 	uint8_t l = memory[pc];
 	uint8_t h = l + 1;
 	uint16_t addr = memory[h];
-	addr = (addr << 8 | memory[l]) + y;
+	addr = ((addr << 8) | memory[l]) + y;
 
 	if (DIFF_PAGE (addr, pc))
 		flags |= PAGE_CROSS;
