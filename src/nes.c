@@ -21,9 +21,9 @@ enum status_flags
 };
 
 
-static void *prg_rom = 0;
-static void *chr_rom = 0;
-static int   flags   = STOP;
+static uint8_t* prg_rom = 0;
+static uint8_t* chr_rom = 0;
+static int      flags   = STOP;
 
 
 /**
@@ -107,6 +107,7 @@ static int load_ines (FILE *fp)
 	}
 
 	// VERBOSE
+	printf (" TV System: %s\n", header[9] & 1 ? "PAL" : "NTSC");
 	printf (" PRG ROM size: %.2d x 16KB (= %.2dKB)\n", header[4], header[4] * 16);
 	printf (" CHR ROM size: %.2d x  8KB (= %.2dKB)\n", header[5], header[5] * 8);
 	printf (" PRG RAM size: %.2d x  8KB\n", prg_ram_size);
@@ -133,9 +134,9 @@ static int load_ines (FILE *fp)
 /**
 *  Open a NES ROM file.
 */
-static int load_game (const char *file)
+static int load_game (const char* file)
 {
-	FILE *fp = fopen (file, "rb");
+	FILE* fp = fopen (file, "rb");
 	int ret = 0;
 	if (!fp)
 	{
@@ -151,7 +152,7 @@ end:
 /**
 *  Run game in file.
 */
-void nes_run (const char *file)
+void nes_run (const char* file)
 {
 	flags = 0;
 
