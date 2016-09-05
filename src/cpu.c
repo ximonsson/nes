@@ -1045,7 +1045,7 @@ static const instruction PHA = { "PHA", &pha };
 // Push processor status
 static void php (addressing_mode mode)
 {
-	push (ps);
+	push (ps | 0x30);
 }
 static const instruction PHP = { "PHP", &php };
 
@@ -1146,6 +1146,7 @@ static const instruction RTS = { "RTS", &rts };
 // Subtract with carry
 static void sbc (addressing_mode mode)
 {
+	// TODO this one failing a lot of tests - look over it
 	uint8_t b = get_value (mode);
 	uint8_t c = a - b - (1 - (ps & CARRY));
 	ps &= ~(CARRY | OVERFLOW);
