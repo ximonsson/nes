@@ -7,9 +7,11 @@
 #include <pthread.h>
 
 #define OAM_DMA_REGISTER    0x4014
+
 /* Controllers port memory locations */
 #define CTRL_ONE_MEM_LOC    0x4016
 #define CTRL_TWO_MEM_LOC    0x4017
+
 /* DIFF_PAGE returns true or false depending on if x and y are on different pages */
 #define DIFF_PAGE(x, y) ((x & 0xFF00) != (y & 0xFF00))
 
@@ -437,7 +439,7 @@ static void mem_store (uint8_t value, uint16_t address)
 	// loop through store event handlers
 	// any non-zero return value means we stop propagation and return
 	for (store_handler* handle = store_handlers; *handle != NULL; handle ++)
-		if ((*handle)(address, value) == 1)
+		if ((*handle)(address, value) != 0)
 			return;
 
 	// if we arrive here it is alright to store to memory
@@ -570,7 +572,7 @@ static inline void interrupt (uint16_t _pc)
 static void nmi ()
 {
 	uint16_t nmi_vector = memory[NMI_VECTOR + 1];
-	nmi_vector = nmi_vector << 8 | memory[NMI_VECTOR];
+	nmi_vector = (nmi_vector << 8) | memory[NMI_VECTOR];
 	interrupt (nmi_vector);
 }
 
@@ -582,7 +584,7 @@ static void irq ()
 	if (ps & ~INTERRUPT)
 	{
 		uint16_t irq_vector = memory[IRQ_VECTOR + 1];
-		irq_vector = irq_vector << 8 | memory[IRQ_VECTOR];
+		irq_vector = (irq_vector << 8) | memory[IRQ_VECTOR];
 		interrupt (irq_vector);
 	}
 }
