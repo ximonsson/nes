@@ -31,9 +31,11 @@
  */
 typedef enum mirroring_modes
 {
-	HORIZONTAL,
-	VERTICAL,
-	FOUR_SCREEN
+	MIRROR_HORIZONTAL,
+	MIRROR_VERTICAL,
+	MIRROR_SINGLE0,
+	MIRROR_SINGLE1,
+	MIRROR_FOUR_SCREEN,
 }
 nes_ppu_mirroring_mode;
 
@@ -62,13 +64,6 @@ nes_ppu_register;
 void nes_ppu_reset ();
 
 /**
- *  Render a number of pixels to the frame buffer.
- *  If the PPU finishes an entire frame it will display
- *  on the screen.
- */
-void nes_ppu_render (int pixels);
-
-/**
  *  nes_ppu_step performs a cycle in the PPU.
  */
 void nes_ppu_step () ;
@@ -76,25 +71,30 @@ void nes_ppu_step () ;
 /**
  *  Load data into VRAM.
  */
-void nes_ppu_load_vram (void *data) ;
+void nes_ppu_load_vram (void* /* data */) ;
+
+/**
+ *
+ */
+void nes_ppu_set_mirroring (nes_ppu_mirroring_mode /* mode */);
 
 /**
  *  Write value to PPU register.
  *  This function should be called when modifying their values as to the
  *  necessary callbacks that alter PPU state when writing to registers.
  */
-void nes_ppu_register_write (nes_ppu_register reg, uint8_t value) ;
+void nes_ppu_register_write (nes_ppu_register /* reg */, uint8_t /* value */) ;
 
 /**
  *  Read value from PPU register.
  *  Use this function to make sure necessary callbacks are called that alter
  *  PPU state.
  */
-uint8_t nes_ppu_register_read (nes_ppu_register reg) ;
+uint8_t nes_ppu_register_read (nes_ppu_register /* reg */) ;
 
 /**
  *  Load data into the PPUs OAM data.
  */
-void nes_ppu_load_oam_data (void *data);
+void nes_ppu_load_oam_data (void* /* data */);
 
 #endif

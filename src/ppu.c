@@ -123,6 +123,70 @@ void nes_ppu_load_oam_data (void *data)
 	memcpy (primary_oam, data + offset, oamaddr);
 }
 
+/* mirror_vertically mirrors the input address vertically */
+static uint16_t mirror_vertically (uint16_t address)
+{
+	return address &= 0xE7FF;
+}
+
+/* mirror_horizontally mirrors the input address horizontally */
+static uint16_t mirror_horizontally (uint16_t address)
+{
+	// AA
+	// BB
+	if (address >= 0x2800)
+		address = 0x2400 + (v & 0x3ff);
+	else if (address >= 0x2400)
+		address -= 0x400;
+	return address;
+}
+
+/* mirror_four_screen mirrors the input address using four screen mirroring */
+static uint16_t mirror_four_screen (uint16_t address)
+{
+	// AB
+	// CD
+	// TODO implement
+	return address;
+}
+
+/* mirror function - takes an address and returns the respective one in VRAM respecting mirroring mode */
+typedef uint16_t (*address_mirrorer) (uint16_t) ;
+
+/* address_mirrorers lists mirroring functions, their index are their modes */
+static address_mirrorer address_mirrorers[5] =
+{
+	mirror_horizontally,
+	mirror_vertically,
+	NULL,
+	NULL,
+	mirror_four_screen,
+};
+
+/* mirror_mode contains the current mirroring mode of the nametables */
+static nes_ppu_mirroring_mode mirror_mode;
+
+/* nametable_mirrorer is the current mirroring function set by the mapper */
+static address_mirrorer nametable_mirrorer;
+
+/**
+ *  mirror_address returns the mirrored location of address within VRAM.
+ *  The function assumes the caller is askingfor an address within nametable space, as it the only part that is mirrored.
+ */
+static uint16_t mirror_address (uint16_t address)
+{
+	// $3xxx -> $2xxxx
+	return nametable_mirrorer (address & 0xEFFF);
+}
+
+
+void nes_ppu_set_mirroring (nes_ppu_mirroring_mode mode)
+{
+	mirror_mode = mode;
+	nametable_mirrorer = *address_mirrorers[mirror_mode];
+}
+
+
 /*
  *  Register Writers ---------------------------------------------------------------------------------------------------
  */
@@ -186,23 +250,19 @@ static void write_ppuaddr (uint8_t value)
 /* Write > PPUDATA $(2007) */
 static void write_ppudata (uint8_t value)
 {
-	// mirror palettes
-	if (v >= 0x3F00)
+	if (v >= 0x3F00) // palettes
 	{
+		// make sure to mirror
 		uint16_t delta = v % 4 == 0 ? 0x10 : 0x20;
 		for (int i = 0x3F00 + v % delta; i < 0x4000; i += delta)
 			vram[i] = value;
 	}
-	// mirror nametables
-	//else if (v >= 0x2000 && v % 0x1000 < 0xF00)
-	else if (v >= 0x2000)
+	else if (v >= 0x2000) // nametables
 	{
-		// TODO this is probably a little more complex considering mirroring of nametables
-		vram[0x2000 + v % 0x1000] =
-		vram[0x3000 + v % 0x1000] = value;
+		// read mirrored address
+		vram[mirror_address (v)] = value;
 	}
-	// unmirrored write (patterns)
-	else
+	else // patterns (no mirroring)
 		vram[v] = value;
 
 	v += 1 + ((ppu_registers[PPUCTRL] & 0x04) >> 2) * 31;
@@ -266,14 +326,19 @@ static uint8_t read_oamdata ()
 static uint8_t read_ppudata ()
 {
 	uint8_t ret = vram[v];
-	if (v < 0x3F00) // normal read
+	if (v >= 0x3F00) // palette read
+	{
+		vram_buffer = vram[mirror_address (v - 0x1000)];
+	}
+	else if (v >= 0x2000) // nametable read
+	{
+		ret = vram_buffer;
+		vram_buffer = vram[mirror_address (v)];
+	}
+	else // v < $2000: pattern read
 	{
 		ret = vram_buffer;
 		vram_buffer = vram[v];
-	}
-	else // palette read
-	{
-		vram_buffer = vram[v - 0x1000];
 	}
 	// increment and wrap
 	v += 1 + ((ppu_registers[PPUCTRL] & 0x04) >> 2) * 31;
@@ -365,7 +430,7 @@ static void load_tile ()
 	// fine Y
 	uint8_t y = (v >> 12) & 7;
 	// get nametable byte
-	uint8_t nametable = vram[0x2000 | (v & 0x0FFF)];
+	uint8_t nametable = vram[mirror_address (0x2000 | (v & 0x0FFF))];
 	// flagged background pattern tile table in ppuctrl
 	uint8_t table = (ppu_registers[PPUCTRL] & 0x10) >> 4;
 	// tile data

@@ -49,20 +49,21 @@ static int load_ines (FILE *fp)
 	// register mapper ...
 
 	// PPU mirroring --------------------------------------------------
-	int mirroring = HORIZONTAL;
+	int mirroring = MIRROR_HORIZONTAL;
 	switch (header[6] & 0x9)
 	{
 	case 0: // horizontal mirroring
-		mirroring = HORIZONTAL;
+		mirroring = MIRROR_HORIZONTAL;
 		break;
 	case 1: // vertical mirroring
-		mirroring = VERTICAL;
+		mirroring = MIRROR_VERTICAL;
 		break;
 	case 8: // four screen mirroring
 	case 9:
-		mirroring = FOUR_SCREEN;
+		mirroring = MIRROR_FOUR_SCREEN;
 		break;
 	}
+	nes_ppu_set_mirroring (mirroring);
 
 	// read PRG ROM --------------------------------------------------
 	int prg_rom_size = header[4] * 16 << 10;
@@ -118,11 +119,11 @@ static int load_ines (FILE *fp)
 	printf ("Mirroring: ");
 	switch (mirroring)
 	{
-		case HORIZONTAL:
+		case MIRROR_HORIZONTAL:
 			printf ("HORIZONTAL\n"); break;
-		case VERTICAL:
+		case MIRROR_VERTICAL:
 			printf ("VERTICAL\n"); break;
-		case FOUR_SCREEN:
+		case MIRROR_FOUR_SCREEN:
 			printf ("FOUR_SCREEN\n"); break;
 	}
 
