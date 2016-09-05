@@ -22,16 +22,25 @@
 #define SPRITE_ZERO_HIT 0x40
 #define SPRITE_OVERFLOW 0x20
 
-#define SECONDARY_OAM_SIZE  8
-#define PRIMARY_OAM_SIZE   64
-#define VRAM_SIZE    16 << 10
+// OAM
+#define SECONDARY_OAM_SIZE        8
+#define PRIMARY_OAM_SIZE         64
+
+// VRAM memory map
+#define VRAM_SIZE          16 << 10
+#define PATTERN_RAM          0x0000
+#define NAMETABLE_0          0x2000
+#define NAMETABLE_1          0x2400
+#define NAMETABLE_2          0x2800
+#define NAMETABLE_3          0x2C00
+#define PALETTE_RAM          0x3F00
 
 /* Status flags */
 enum _flags
 {
-	w = 0x1,
+	w            = 0x1,
 	nmi_occurred = 0x2,
-	odd_frame = 0x4,
+	odd_frame    = 0x4,
 };
 static int flags;
 
@@ -47,8 +56,8 @@ static uint8_t   screen[SCREEN_W * SCREEN_H * 3];
 static uint8_t   screen_buffer[SCREEN_W * SCREEN_H * 3];
 
 /* OAM data */
-static uint8_t   primary_oam[64 * 4];
-static uint8_t   secondary_oam[8];
+static uint8_t   primary_oam[PRIMARY_OAM_SIZE * 4];
+static uint8_t   secondary_oam[SECONDARY_OAM_SIZE];
 
 /* PPU scrolling registers. */
 static uint16_t  t;
@@ -91,8 +100,8 @@ void print_scroll ()
 void nes_ppu_reset ()
 {
 	// init ppu registers
-	__memory__ ((void **) &ppu_registers, PPU_REGISTER_MEM_LOC);
-	ppu_registers[PPUSTATUS] = 0xA0;
+	__memory__ ((void**) &ppu_registers, PPU_REGISTER_MEM_LOC);
+	// ppu_registers[PPUSTATUS] = 0xA0;
 
 	// reset flags
 	flags = 0;
@@ -108,13 +117,13 @@ void nes_ppu_reset ()
 }
 
 
-void nes_ppu_load_vram (void *data)
+void nes_ppu_load_vram (void* data)
 {
 	memcpy (vram, data, VRAM_SIZE);
 }
 
 
-void nes_ppu_load_oam_data (void *data)
+void nes_ppu_load_oam_data (void* data)
 {
 	uint8_t oamaddr = ppu_registers[OAMADDR];
 	// compute offset to make sure we wrap data
@@ -123,29 +132,42 @@ void nes_ppu_load_oam_data (void *data)
 	memcpy (primary_oam, data + offset, oamaddr);
 }
 
-/* mirror_vertically mirrors the input address vertically */
+
+/*
+ *  Mirroring ----------------------------------------------------------------------------------------------
+ */
+
+/**
+ *  mirror_vertically mirrors the input address vertically
+ *    AB
+ *    AB
+ */
 static uint16_t mirror_vertically (uint16_t address)
 {
-	return address &= 0xE7FF;
+	return address &= 0x27FF;
 }
 
-/* mirror_horizontally mirrors the input address horizontally */
+/**
+ *  mirror_horizontally mirrors the input address horizontally
+ *    AA
+ *    BB
+ */
 static uint16_t mirror_horizontally (uint16_t address)
 {
-	// AA
-	// BB
-	if (address >= 0x2800)
-		address = 0x2400 + (v & 0x3ff);
-	else if (address >= 0x2400)
+	if (address >= NAMETABLE_2)
+		address = NAMETABLE_1 + (address & 0x3ff);
+	else if (address >= NAMETABLE_1)
 		address -= 0x400;
 	return address;
 }
 
-/* mirror_four_screen mirrors the input address using four screen mirroring */
+/**
+ *  mirror_four_screen mirrors the input address using four screen mirroring
+ *    AB
+ *    CD
+ */
 static uint16_t mirror_four_screen (uint16_t address)
 {
-	// AB
-	// CD
 	// TODO implement
 	return address;
 }
@@ -171,12 +193,13 @@ static address_mirrorer nametable_mirrorer;
 
 /**
  *  mirror_address returns the mirrored location of address within VRAM.
- *  The function assumes the caller is askingfor an address within nametable space, as it the only part that is mirrored.
+ *  The function assumes the caller is asking for an address within nametable space,
+ *  as it is the only part that is mirrored.
  */
 static uint16_t mirror_address (uint16_t address)
 {
 	// $3xxx -> $2xxxx
-	return nametable_mirrorer (address & 0xEFFF);
+	return nametable_mirrorer (address & 0x2FFF);
 }
 
 
@@ -188,7 +211,7 @@ void nes_ppu_set_mirroring (nes_ppu_mirroring_mode mode)
 
 
 /*
- *  Register Writers ---------------------------------------------------------------------------------------------------
+ *  Register Writers ------------------------------------------------------------------------------------
  */
 
 /* Write > PPUCTRL $(2000) */
@@ -250,14 +273,14 @@ static void write_ppuaddr (uint8_t value)
 /* Write > PPUDATA $(2007) */
 static void write_ppudata (uint8_t value)
 {
-	if (v >= 0x3F00) // palettes
+	if (v >= PALETTE_RAM) // palettes
 	{
 		// make sure to mirror
 		uint16_t delta = v % 4 == 0 ? 0x10 : 0x20;
-		for (int i = 0x3F00 + v % delta; i < 0x4000; i += delta)
+		for (int i = PALETTE_RAM + v % delta; i < VRAM_SIZE; i += delta)
 			vram[i] = value;
 	}
-	else if (v >= 0x2000) // nametables
+	else if (v >= NAMETABLE_0) // nametables
 	{
 		// read mirrored address
 		vram[mirror_address (v)] = value;
@@ -326,11 +349,11 @@ static uint8_t read_oamdata ()
 static uint8_t read_ppudata ()
 {
 	uint8_t ret = vram[v];
-	if (v >= 0x3F00) // palette read
+	if (v >= PALETTE_RAM) // palette read
 	{
 		vram_buffer = vram[mirror_address (v - 0x1000)];
 	}
-	else if (v >= 0x2000) // nametable read
+	else if (v >= NAMETABLE_0) // nametable read
 	{
 		ret = vram_buffer;
 		vram_buffer = vram[mirror_address (v)];
@@ -360,7 +383,7 @@ static uint8_t (*register_readers[8])() =
 };
 
 /*
- *  End Register Readers -----------------------------------------------------------------------------------------------
+ *  End Register Readers ----------------------------------------------------------------------------
  */
 
 
@@ -446,7 +469,7 @@ static void load_tile ()
 	for (int i = 0; i < 8; i ++)
 	{
 		colors <<= 4;
-		colors |= (palette << 2) | (low & 1) | ((high & 1) << 1);
+		colors |= (palette << 2) | ((high & 1) << 1) | (low & 1);
 		low >>= 1;
 		high >>= 1;
 	}
