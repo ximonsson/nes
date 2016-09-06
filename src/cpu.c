@@ -425,9 +425,10 @@ static int on_dma_write (uint16_t address, uint8_t value)
  */
 static int on_controller_port_write (uint16_t address, uint8_t value)
 {
-	if (address == CTRL_ONE_MEM_LOC || address == CTRL_TWO_MEM_LOC)
+	if (address == CTRL_ONE_MEM_LOC)
 	{
-		nes_io_controller_port_write ((enum nes_io_controller_port) (address & 1), value);
+		nes_io_controller_port_write (0, value);
+		nes_io_controller_port_write (1, value);
 		return 1;
 	}
 	return 0;
@@ -488,12 +489,19 @@ static int on_ppu_register_read (uint16_t address, uint8_t *value)
  */
 static int on_controller_port_read (uint16_t address, uint8_t *value)
 {
-	if (address == CTRL_ONE_MEM_LOC || address == CTRL_TWO_MEM_LOC)
+	switch (address)
 	{
-		*value = nes_io_controller_port_read ((enum nes_io_controller_port) (address & 1));
-		return 1;
+		case CTRL_ONE_MEM_LOC:
+			*value = nes_io_controller_port_read (0);
+			return 0;
+
+		case CTRL_TWO_MEM_LOC:
+			*value = nes_io_controller_port_read (1);
+			return 0;
+
+		default:
+			return 0;
 	}
-	return 0;
 }
 
 /* End Read Handlers ------------------------------------------------------------------------------------------------ */
@@ -508,7 +516,7 @@ static uint8_t mem_read (uint16_t address)
 	uint8_t b = memory[address];
 	// loop through read event handlers
 	for (read_handler* handle = read_handlers; *handle != NULL; handle ++)
-		if ((*handle)(address, &b) == 1)
+		if ((*handle)(address, &b) != 0)
 			break;
 	return b;
 }
@@ -534,11 +542,11 @@ static uint8_t get_value (addressing_mode mode)
 void nes_cpu_reset ()
 {
 	// default values of registers
-	a   = 0;
-	x   = 0;
-	y   = 0;
-	sp  = 0xFD;
-	ps  = 0x24;
+	a  = 0;
+	x  = 0;
+	y  = 0;
+	sp = 0xFD;
+	ps = 0x24;
 
 	flags = 0;
 	cpucc = 0;
@@ -1157,11 +1165,10 @@ static void sbc (addressing_mode mode)
 
 	ps &= ~(CARRY | OVERFLOW); // reset CARRY and OVERFLOW
 
-	//if (!((a ^ ~b) & 0x80) && ((a ^ c) & 0x80)) // if signs do not match there is overflow
 	if (~(a ^ ~b) & (a ^ c) & 0x80) // if signs do not match there is overflow
 		ps |= OVERFLOW;
 
-	if (c >= 0)
+	if (c >= 0) // 0 -> 255 set CARRY
 		ps |= CARRY;
 
 	a = c; // store to A and set ZERO and NEGATIVE flag
