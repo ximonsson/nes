@@ -125,26 +125,27 @@ void nes_cpu_load_prg_rom (void *data)
  *  ADDRESSING FUNCTIONS
  *  ---------------------------------------------------------------------------------------------- */
 
+/* Zero Page - $00 */
 static uint16_t zero_page ()
 {
 	return memory[pc];
 }
 
-
+/* Zero Page,X - $10,X */
 static uint16_t zero_page_x ()
 {
 	uint8_t ret = memory[pc] + x;
 	return ret;
 }
 
-
+/* Zero Page,Y - $10,Y */
 static uint16_t zero_page_y ()
 {
 	uint8_t ret = memory[pc] + y;
 	return ret;
 }
 
-
+/* Absolute - $1234 */
 static uint16_t absolute ()
 {
 	uint16_t addr = memory[pc + 1];
@@ -152,7 +153,7 @@ static uint16_t absolute ()
 	return addr;
 }
 
-
+/* Absolute,X - $1234,X */
 static uint16_t absolute_x ()
 {
 	uint16_t addr = absolute () + x;
@@ -161,7 +162,7 @@ static uint16_t absolute_x ()
 	return addr;
 }
 
-
+/* Absolute,Y - $1234,Y */
 static uint16_t absolute_y ()
 {
 	uint16_t addr = absolute () + y;
@@ -170,19 +171,24 @@ static uint16_t absolute_y ()
 	return addr;
 }
 
-
+/* Indirect - ($FFFC) */
 static uint16_t indirect ()
 {
-	uint16_t loc = memory[pc + 1];
-	loc = (loc << 8) | memory[pc];
+	uint8_t l = memory[pc];
+	uint16_t h = memory[pc + 1];
+	h <<= 8;
 
-	uint16_t addr = memory[loc + 1];
-	addr = (addr << 8) | memory[loc];
+	uint16_t low = h | l;
+	l ++;
+	uint16_t high = h | l;
+
+	uint16_t addr = memory[high];
+	addr = (addr << 8) | memory[low];
 
 	return addr;
 }
 
-
+/* Indexed Indirect - $(40,X) */
 static uint16_t indexed_indirect ()
 {
 	uint8_t l = memory[pc] + x;
@@ -193,7 +199,7 @@ static uint16_t indexed_indirect ()
 	return addr;
 }
 
-
+/* Indirect Indexed - ($40),Y */
 static uint16_t indirect_indexed ()
 {
 	uint8_t l = memory[pc];
@@ -207,19 +213,19 @@ static uint16_t indirect_indexed ()
 	return addr;
 }
 
-
+/* Accumulator - A */
 static uint16_t accumulator ()
 {
 	return 0;
 }
 
-
+/* Immediate - #10 */
 static uint16_t immediate ()
 {
 	return pc;
 }
 
-
+/* Relative - *+4 */
 static uint16_t relative ()
 {
 	return pc;
@@ -1150,6 +1156,7 @@ static void sbc (addressing_mode mode)
 	uint8_t b = get_value (mode);
 	uint8_t c = a - b - (1 - (ps & CARRY));
 	ps &= ~(CARRY | OVERFLOW);
+	//ps &= ~OVERFLOW;
 
 	if ((~(a ^ ~b) & (a ^ c) & 0x80) == 0x80)
 		ps |= OVERFLOW;
@@ -1158,6 +1165,8 @@ static void sbc (addressing_mode mode)
 	set_flags (a, ZERO | NEGATIVE);
 	if ((ps & NEGATIVE) == 0)
 		ps |= CARRY;
+	//if (ps & OVERFLOW)
+	//	ps &= ~CARRY;
 }
 static const instruction SBC = { "SBC", &sbc };
 
