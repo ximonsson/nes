@@ -67,8 +67,8 @@ static int signals;
 
 
 /**
-*  CPU registers
-*/
+ *  CPU registers
+ */
 // Program Counter
 static uint16_t pc;
 // X register
@@ -513,6 +513,21 @@ static uint8_t mem_read (uint16_t address)
 	return b;
 }
 
+/**
+ *  Preferred abstract function for getting a value depending on addressing mode.
+ *  Will make sure to call correct functions for read events and skip in case we are after the accumulator.
+ */
+static uint8_t get_value (addressing_mode mode)
+{
+	if (mode == ACCUMULATOR)
+		return a;
+	else
+	{
+		uint16_t address = calculate_address (mode);
+		return mem_read (address);
+	}
+}
+
 
 #define RST_VECTOR 0xFFFC
 /* Init the CPU to its startup state. */
@@ -565,10 +580,10 @@ static inline void interrupt (uint16_t _pc)
 	push (pc >> 8); // high
 	push (pc);      // low
 	// push PS
-	push (ps | BREAK);
+	push (ps | BREAK | 0x10); // push processor status with B and unused flag set
+	ps |= INTERRUPT;          // disable interrupts
 	// set new PC
 	pc = _pc;
-	ps |= INTERRUPT; // disable interrupt
 	cpucc += 7;
 }
 
@@ -592,21 +607,6 @@ static void irq ()
 		uint16_t irq_vector = memory[IRQ_VECTOR + 1];
 		irq_vector = (irq_vector << 8) | memory[IRQ_VECTOR];
 		interrupt (irq_vector);
-	}
-}
-
-/**
- *  Preferred abstract function for getting a value depending on addressing mode.
- *  Will make sure to call correct functions for read events and skip in case we are after the accumulator.
- */
-static uint8_t get_value (addressing_mode mode)
-{
-	if (mode == ACCUMULATOR)
-		return a;
-	else
-	{
-		uint16_t address = calculate_address (mode);
-		return mem_read (address);
 	}
 }
 
@@ -650,7 +650,7 @@ static void adc (addressing_mode mode)
 	if (v > 0xFF)
 		ps |= CARRY;
 
-	if ((~(a ^ b) & (a ^ c) & 0x80) == 0x80)
+	if (~(a ^ b) & (a ^ c) & 0x80)
 		ps |= OVERFLOW;
 
 	a = c;
@@ -1152,21 +1152,20 @@ static const instruction RTS = { "RTS", &rts };
 // Subtract with carry
 static void sbc (addressing_mode mode)
 {
-	// TODO this one failing a lot of tests - look over it
-	uint8_t b = get_value (mode);
-	uint8_t c = a - b - (1 - (ps & CARRY));
-	ps &= ~(CARRY | OVERFLOW);
-	//ps &= ~OVERFLOW;
+	int16_t b = get_value (mode);
+	int16_t c = a - b - (1 - (ps & CARRY));
 
-	if ((~(a ^ ~b) & (a ^ c) & 0x80) == 0x80)
+	ps &= ~(CARRY | OVERFLOW); // reset CARRY and OVERFLOW
+
+	//if (!((a ^ ~b) & 0x80) && ((a ^ c) & 0x80)) // if signs do not match there is overflow
+	if (~(a ^ ~b) & (a ^ c) & 0x80) // if signs do not match there is overflow
 		ps |= OVERFLOW;
 
-	a = c;
-	set_flags (a, ZERO | NEGATIVE);
-	if ((ps & NEGATIVE) == 0)
+	if (c >= 0)
 		ps |= CARRY;
-	//if (ps & OVERFLOW)
-	//	ps &= ~CARRY;
+
+	a = c; // store to A and set ZERO and NEGATIVE flag
+	set_flags (a, ZERO | NEGATIVE);
 }
 static const instruction SBC = { "SBC", &sbc };
 
