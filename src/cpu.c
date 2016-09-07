@@ -476,8 +476,7 @@ static int on_ppu_register_read (uint16_t address, uint8_t *value)
 {
 	if (address >= PPU_REGISTER_MEM_LOC && address < PPU_REGISTER_MEM_LOC + 0x2000)
 	{
-		int reg = address & 7;
-		*value = nes_ppu_register_read (reg);
+		*value = nes_ppu_register_read (address & 7);
 		return 1;
 	}
 	return 0;

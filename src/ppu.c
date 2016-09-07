@@ -23,17 +23,17 @@
 #define SPRITE_OVERFLOW 0x20
 
 // OAM
-#define SECONDARY_OAM_SIZE        8
-#define PRIMARY_OAM_SIZE         64
+#define PRIMARY_OAM_SIZE   64
+#define SECONDARY_OAM_SIZE  8
 
 // VRAM memory map
-#define VRAM_SIZE          16 << 10
-#define PATTERN_RAM          0x0000
-#define NAMETABLE_0          0x2000
-#define NAMETABLE_1          0x2400
-#define NAMETABLE_2          0x2800
-#define NAMETABLE_3          0x2C00
-#define PALETTE_RAM          0x3F00
+#define VRAM_SIZE   16 << 10
+#define PATTERN_RAM 0x0000
+#define NAMETABLE_0 0x2000
+#define NAMETABLE_1 0x2400
+#define NAMETABLE_2 0x2800
+#define NAMETABLE_3 0x2C00
+#define PALETTE_RAM 0x3F00
 
 /* Status flags */
 enum _flags
