@@ -489,19 +489,12 @@ static int on_ppu_register_read (uint16_t address, uint8_t *value)
  */
 static int on_controller_port_read (uint16_t address, uint8_t *value)
 {
-	switch (address)
+	if (address == CTRL_ONE_MEM_LOC || address == CTRL_TWO_MEM_LOC)
 	{
-		case CTRL_ONE_MEM_LOC:
-			*value = nes_io_controller_port_read (0);
-			return 0;
-
-		case CTRL_TWO_MEM_LOC:
-			*value = nes_io_controller_port_read (1);
-			return 0;
-
-		default:
-			return 0;
+		*value = nes_io_controller_port_read (address & 1);
+		return 1;
 	}
+	return 0;
 }
 
 /* End Read Handlers ------------------------------------------------------------------------------------------------ */
