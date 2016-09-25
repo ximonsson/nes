@@ -1,5 +1,6 @@
 #include "nes/cpu.h"
 #include "nes/ppu.h"
+#include "nes/apu.h"
 #include "nes/io.h"
 #include <stdio.h>
 #include <string.h>
@@ -434,6 +435,18 @@ static int on_controller_port_write (uint16_t address, uint8_t value)
 	return 0;
 }
 
+/* on_apu_register_write */
+static int on_apu_register_write (uint16_t address, uint8_t value)
+{
+	// $4000 < address < $4015  or address = $4017
+	if ((address >= NES_APU_PULSE_1 && address <= NES_APU_STATUS) || address == NES_APU_FRAME_COUNTER)
+	{
+		nes_apu_register_write (address, value);
+		return 1;
+	}
+	return 0;
+}
+
 /* End Store Handlers ----------------------------------------------------------------------------------------------- */
 
 
@@ -446,7 +459,7 @@ static void mem_store (uint8_t value, uint16_t address)
 	// loop through store event handlers
 	// any non-zero return value means we stop propagation and return
 	for (store_handler* handle = store_handlers; *handle != NULL; handle ++)
-		if ((*handle)(address, value) != 0)
+		if ((*handle) (address, value) != 0)
 			return;
 
 	// if we arrive here it is alright to store to memory
@@ -491,6 +504,20 @@ static int on_controller_port_read (uint16_t address, uint8_t *value)
 	if (address == CTRL_ONE_MEM_LOC || address == CTRL_TWO_MEM_LOC)
 	{
 		*value = nes_io_controller_port_read (address & 1);
+		return 1;
+	}
+	return 0;
+}
+
+/**
+ * on_apu_register_read checks if the read event is for an APU register read and calls necessary functions
+ * if the read is for an APU register a non zero value is returned to indicate to stop propagation.
+ */
+static int on_apu_register_read (uint16_t address, uint8_t* value)
+{
+	if ((address >= NES_APU_PULSE_1 && address <= NES_APU_STATUS) || address == NES_APU_FRAME_COUNTER)
+	{
+		*value = nes_apu_register_read (address);
 		return 1;
 	}
 	return 0;
@@ -554,10 +581,12 @@ void nes_cpu_reset ()
 	store_handlers[0] = &on_ppu_register_write;
 	store_handlers[1] = &on_dma_write;
 	store_handlers[2] = &on_controller_port_write;
+	store_handlers[3] = &on_apu_register_write;
 
 	// register read event handlers
 	read_handlers[0]  = &on_ppu_register_read;
 	read_handlers[1]  = &on_controller_port_read;
+	read_handlers[2]  = &on_apu_register_read;
 }
 
 /**
