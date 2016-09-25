@@ -25,7 +25,7 @@ endif
 
 INCLUDES = -I./include
 
-LDFLAGS += -L./$(LIBS) -lSDL2 -lGLESv2 -lpthread -lnes
+LDFLAGS += -L./$(LIBS) -lSDL2 -lGLESv2 -lpthread -lnes -lpulse -lpulse-simple
 
 ARCMD = rcs
 

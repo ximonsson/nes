@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <GLES2/gl2.h>
+#include <pulse/simple.h>
 
 
 #define VERTEX_SHADER_FILE          "app/shaders/vertex.glsl"
@@ -180,7 +181,7 @@ int init_opengl ()
 
 	// gen texture
 	glEnable 		(GL_TEXTURE_2D);
-	//glActiveTexture	(GL_TEXTURE0);
+	glActiveTexture	(GL_TEXTURE0);
 	glGenTextures 	(1, &image_texture);
 	glBindTexture 	(GL_TEXTURE_2D, image_texture);
 	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -191,9 +192,6 @@ int init_opengl ()
 	// generate vertex buffer for vertices and texture coords
 	glGenBuffers	(1, &vertex_vbo);
 	glGenBuffers 	(1, &texture_vbo);
-
-//	glBindBuffer 	(GL_ARRAY_BUFFER, texture_vbo);
-//	glBufferData	(GL_ARRAY_BUFFER, 6 * 2 * sizeof (GLfloat), texture_coords, GL_STATIC_DRAW);
 
 	glBindBuffer (GL_ARRAY_BUFFER, vertex_vbo);
 	glBufferData (GL_ARRAY_BUFFER, 6 * 3 * sizeof (GLfloat), vertex_coords, GL_STATIC_DRAW);
@@ -218,9 +216,9 @@ int init_opengl ()
 
 void quit_opengl ()
 {
-	SDL_GL_DeleteContext	(sdl_context);
-	SDL_DestroyWindow		(sdl_window);
-	SDL_Quit 				();
+	SDL_GL_DeleteContext (sdl_context);
+	SDL_DestroyWindow (sdl_window);
+	SDL_Quit ();
 }
 
 void draw ()
@@ -232,11 +230,6 @@ void draw ()
 	SDL_GL_SwapWindow (sdl_window);
 }
 
-void set_compressed_texture (int w, int h, void *data)
-{
-	glTexImage2D (GL_TEXTURE_2D, 0, GL_ALPHA, w, h, 0, GL_ALPHA, GL_UNSIGNED_BYTE, data);
-}
-
 /**
 *  Parse input arguments and do required setup.
 */
@@ -244,6 +237,32 @@ void parse_arguments (char **args)
 {
 
 }
+
+
+static pa_simple* audioconn;
+
+void audio_init ()
+{
+	pa_sample_spec ss;
+	ss.format = PA_SAMPLE_S16NE;
+	ss.channels = 2;
+	ss.rate = 44100;
+
+	audioconn = pa_simple_new (NULL, "NES", PA_STREAM_PLAYBACK, NULL, "Audio", &ss, NULL, NULL, NULL);
+}
+
+int audio_play_samples (void* samples, size_t size)
+{
+	int err;
+	pa_simple_write (audioconn, samples, size, &err);
+	return err;
+}
+
+void audio_quit ()
+{
+	pa_simple_free (audioconn);
+}
+
 
 static int running = 1;
 
@@ -299,9 +318,15 @@ static void handle_events ()
 					case SDLK_x:
 						key_func (0, nes_select);
 						break;
+
+					case SDLK_q:
+						running = 0;
+						nes_stop ();
+						break;
 				}
 			break;
 		}
+		usleep (5000);
 	}
 }
 
@@ -316,8 +341,9 @@ int main (int argc, char **argv)
 {
 	// init
 	parse_arguments (argv);
-	init_screen (256 * 2, 240 * 2);
+	init_screen (256 * 2.5, 240 * 2.5);
 	init_opengl ();
+	audio_init ();
 
 	// run game
 	running = 1;
@@ -327,13 +353,15 @@ int main (int argc, char **argv)
 	while (running)
 	{
 		draw ();
+		// audio_play_samples (samples, n);
 		handle_events ();
-		// usleep (1000);
+		usleep (5000);
 	}
 
 	printf ("done\n");
 	// deinit
 	pthread_join (run_thread, NULL);
 	quit_opengl ();
+	audio_quit ();
 	return 0;
 }
