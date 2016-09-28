@@ -5,9 +5,19 @@
 
 
 /* length_counter_table contains lookup values for length counters */
-static uint8_t length_counter_table[32] = {
+static uint8_t length_counter_table[32] =
+{
 	10, 254, 20, 2, 40, 4, 80, 6, 160, 8, 60, 10, 14, 12, 26, 14,
 	12, 16, 24, 18, 48, 20, 96, 22, 192, 24, 72, 26, 16, 28, 32, 30
+};
+
+/* duty_sequence are the different waveform sequences dependent on a pulse channels duty */
+static uint8_t duty_sequence[4][8] =
+{
+	{ 0, 1, 0, 0, 0, 0, 0, 0 },
+	{ 0, 1, 1, 0, 0, 0, 0, 0 },
+	{ 0, 1, 1, 1, 1, 0, 0, 0 },
+	{ 1, 0, 0, 1, 1, 1, 1, 1 }
 };
 
 /* envelope linked to a channel */
@@ -16,7 +26,7 @@ struct envelope
 	uint8_t* reg;
 	int      divider;
 	int      start_flag;
-	int      decay_level_counter;
+	uint8_t  decay_level_counter;
 };
 
 /* clock_envelope clocks the supplied envelope linked to a channel */
@@ -45,6 +55,16 @@ void clock_envelope (struct envelope* env)
 	}
 }
 
+static uint8_t envelope_volume (struct envelope* env)
+{
+	if ((*env->reg) & 0x10) {
+		// constant volume
+		return (*env->reg) & 0xF;
+	}
+	else
+		return env->decay_level_counter;
+}
+
 /* APU channel */
 struct channel
 {
@@ -52,6 +72,8 @@ struct channel
 	uint8_t* reg;
 	int      sweep;
 	int      reload_sweep;
+	int      sequencer;
+	uint16_t timer;
 	struct   envelope env;
 };
 
@@ -70,6 +92,7 @@ static void channel_envelope_write (struct channel* ch, uint8_t v)
 {
 	// restart the envelope
 	ch->env.start_flag = 1;
+	ch->sequencer = 0;
 }
 
 /* channel_timer_low_write writes to the low bits of the channel's timer */
@@ -77,13 +100,15 @@ static void channel_timer_low_write (struct channel* ch, uint8_t v)
 {
 	// restart the envelope
 	ch->env.start_flag = 1;
+	ch->sequencer = 0;
 }
 
-/* channel_reload_len_counter writes to a channels length counter / timer low register */
+/* channel_reload_len_counter writes to a channels length counter / timer high register */
 static void channel_reload_len_counter (struct channel* ch, uint8_t v)
 {
 	ch->length_counter = length_counter_table[v >> 3]; // reload length counter
 	ch->env.start_flag = 1; // restart the envelope
+	ch->sequencer = 0;
 }
 
 /* channel_sweep_write writes to the channel's sweep unit */
@@ -104,6 +129,7 @@ static void channel_adjust_period (struct channel* ch)
 	delta >>= shift;
 	if (ch->reg[1] & 8)
 		delta = -delta;
+		// TODO if pulse channel 1 there is to be -1
 	timer += delta;
 
 	// update the registers with the new timer
@@ -137,17 +163,51 @@ static void channel_clock_sweep (struct channel* ch)
 	}
 }
 
-/* channel_output gives the next output from the channel */
-static uint8_t channel_output ()
+/* channel_clock_timer clocks the channel's timer and if needed sequencer */
+static void channel_clock_timer (struct channel* ch)
 {
-	return 0;
+	if (ch->timer == 0)
+	{
+		// reload timer
+		ch->timer = ch->reg[2] & 7;
+		ch->timer = (ch->timer << 8) | ch->reg[3];
+		// step duty waveform sequence
+		ch->sequencer ++;
+		ch->sequencer &= 7; // loop sequencer
+	}
+	else // decrement timer
+		ch->timer --;
+}
+
+/* channel_output gives the next output from the channel */
+static uint8_t channel_output (struct channel* ch)
+{
+	uint8_t duty = ch->reg[0] >> 6;
+	uint16_t timer = ch->reg[3] & 7;
+	timer |= (timer << 8) | ch->reg[2];
+
+	if (duty_sequence[duty][ch->sequencer] == 0)
+		return 0;
+	else if (ch->length_counter == 0)
+		return 0;
+	else if (timer < 8 || timer > 0x7FF)
+		return 0;
+
+	// return envelope volume
+	return envelope_volume (&ch->env);
 }
 
 /* new_channel creates a new channel from a memory location to the first (of four) register */
 struct channel new_channel (uint8_t* reg)
 {
 	struct channel ch;
-	ch.reg = ch.env.reg = reg;
+	ch.reg            =
+	ch.env.reg        = reg;
+	ch.timer          = 0;
+	ch.sequencer      = 0;
+	ch.length_counter = 0;
+	ch.reload_sweep   = 0;
+
 	return ch;
 }
 
@@ -158,9 +218,6 @@ struct channel pulse_1;
 struct channel pulse_2;
 struct channel triangle;
 struct channel noise;
-
-// f = CPU / (16 * (t + 1))
-// t = (CPU / (16 * f)) - 1
 
 /* APU registers */
 static uint8_t* registers;
@@ -360,6 +417,8 @@ static void step_frame_counter ()
 void nes_apu_step ()
 {
 	apucc ++;
+	channel_clock_timer (&pulse_1);
+	channel_clock_timer (&pulse_2);
 	step_frame_counter ();
 }
 
