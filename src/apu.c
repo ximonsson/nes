@@ -211,12 +211,91 @@ struct channel new_channel (uint8_t* reg)
 	return ch;
 }
 
+/* triangle_sequence is the 32 step sequence played by the triangle channel */
+static uint8_t triangle_sequence[32] =
+{
+	15, 14, 13, 12, 11, 10,  9,  8,  7,  6,  5,  4,  3,  2,  1,  0,
+	 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15
+};
+
+/* triangle channel */
+struct triangle
+{
+	int      sequencer;
+	uint16_t timer;
+	uint8_t  length_counter;
+	int      linear_counter;
+	int      linear_counter_reload;
+	uint8_t* reg;
+};
+
+/* triangle_step_timer will step the provided triangle channel's timer */
+static void triangle_step_timer (struct triangle* tr)
+{
+	tr->timer --;
+	if (tr->timer == 0)
+	{
+		// clock sequencer and reload timer
+		tr->timer = tr->reg[3] & 7;
+		tr->timer = tr->timer << 8 | tr->reg[2];
+		if (tr->linear_counter && tr->length_counter)
+		{
+			tr->sequencer ++;
+			tr->sequencer &= 0x1F;
+		}
+	}
+}
+
+/* triangle_clock_linear_counter clocks the triangle channel's linear counter */
+static void triangle_clock_linear_counter (struct triangle* tr)
+{
+	if (tr->linear_counter_reload) // reload the linear counter
+		tr->linear_counter = tr->reg[0] & 0x7F;
+	else if (tr->linear_counter) // decrement the linear counter
+		tr->linear_counter --;
+
+	// if the control flag is cleared the reload flag is cleared
+	if (~tr->reg[0] & 0x80)
+		tr->linear_counter_reload = 0;
+}
+
+/* triangle_clock_length_counter clocks the triangle channel's length counter as long as it is not halted */
+static void triangle_clock_length_counter (struct triangle* tr)
+{
+	int halt = tr->reg[0] & 0x80;
+	if (!halt && tr->length_counter)
+		tr->length_counter --;
+}
+
+/* triangle_reload_length_counter reload the triangle channel's length counter */
+static void triangle_reload_length_counter (struct triangle* tr, uint8_t v)
+{
+	tr->length_counter = length_counter_table[v >> 3];
+	// reload the linear counter
+	tr->linear_counter_reload = 1;
+}
+
+/* triangle_output will output the next value in the triangle channel's sequence */
+static uint8_t triangle_output (struct triangle* tr)
+{
+	return triangle_sequence[tr->sequencer];
+}
+
+/* new_triangle_channel initializes a new triangle channel struct with registers @ base address reg */
+static struct triangle new_triangle_channel (uint8_t* reg)
+{
+	struct triangle tr;
+	tr.reg = reg;
+	return tr;
+}
+
+
 /**
  *  APU Channels
  */
 struct channel pulse_1;
 struct channel pulse_2;
-struct channel triangle;
+struct triangle triangle;
 struct channel noise;
 
 /* APU registers */
@@ -272,6 +351,24 @@ static void pulse2_timer_low_write (uint8_t value)
 static void pulse2_len_cnt_write (uint8_t value)
 {
 	channel_reload_len_counter (&pulse_2, value);
+}
+
+/* write to $4008 */
+static void triangle_lin_cnt_write (uint8_t value)
+{
+	triangle.linear_counter_reload = 1;
+}
+
+/* write to $400A */
+static void triangle_timer_low_write (uint8_t value)
+{
+	triangle.linear_counter_reload = 1;
+}
+
+/* write to $400B */
+static void triangle_timer_high_write (uint8_t value)
+{
+	triangle_reload_length_counter (&triangle, value);
 }
 
 /* write to status register */
@@ -336,7 +433,6 @@ static reader readers[0x18] = { NULL };
 
 uint8_t nes_apu_register_read (uint16_t address)
 {
-//	printf ("reading APU register @ $%.4X\n", address);
 	reader r;
 	if ((r = *readers[address % 0x4000]) != NULL)
 		 return r ();
@@ -356,7 +452,7 @@ void nes_apu_reset ()
 	// set registers for audio channels
 	pulse_1  = new_channel (registers);
 	pulse_2  = new_channel (registers + 4);
-	triangle = new_channel (registers + 8);
+	triangle = new_triangle_channel (registers + 8);
 	noise    = new_channel (registers + 12);
 
 	readers[0x15] = &status_read;
@@ -373,12 +469,41 @@ void nes_apu_reset ()
 	writers[0x06] = &pulse2_timer_low_write;
 	writers[0x07] = &pulse2_len_cnt_write;
 
+	// triangle registers
+	writers[0x08] = &triangle_lin_cnt_write;
+	writers[0x0A] = &triangle_timer_low_write;
+	writers[0x0B] = &triangle_timer_high_write;
+
 	writers[0x15] = &status_write;
 	writers[0x17] = &frame_counter_write;
 
 	apucc = 0; // reset clock cycles
 
 // 	nes_apu_register_write (0x4015, 0); // silence all channels
+}
+
+/* clock_envelopes clocks all the audio channel's envelope units */
+static void clock_envelopes ()
+{
+	clock_envelope (&pulse_1.env);
+	clock_envelope (&pulse_2.env);
+	clock_envelope (&noise.env);
+}
+
+/* clock_sweeps clocks the pulse channel's sweep units */
+static void clock_sweeps ()
+{
+	channel_clock_sweep (&pulse_1);
+	channel_clock_sweep (&pulse_2);
+}
+
+/* clock_length_counters clocks all audio channel's length counters */
+static void clock_length_counters ()
+{
+	clock_channel_length_counter (&pulse_1);
+	clock_channel_length_counter (&pulse_2);
+	clock_channel_length_counter (&noise);
+	triangle_clock_length_counter (&triangle);
 }
 
 /* step_frame_counter steps the frame counter/sequencer */
@@ -390,20 +515,13 @@ static void step_frame_counter ()
 		if (apucc == 3728)
 		{
 			// step envelopes
-			clock_envelope (&pulse_1.env);
-			clock_envelope (&pulse_2.env);
-			clock_envelope (&triangle.env);
-			clock_envelope (&noise.env);
-
-			channel_clock_sweep (&pulse_1);
-			channel_clock_sweep (&pulse_2);
+			clock_envelopes ();
+			triangle_clock_linear_counter (&triangle);
 		}
 		else if (apucc == 7456)
 		{
-			clock_channel_length_counter (&pulse_1);
-			clock_channel_length_counter (&pulse_2);
-			clock_channel_length_counter (&triangle);
-			clock_channel_length_counter (&noise);
+			clock_length_counters ();
+			clock_sweeps ();
 		}
 		// and more ...
 	}
@@ -417,8 +535,13 @@ static void step_frame_counter ()
 void nes_apu_step ()
 {
 	apucc ++;
+	// clock pulse channels
 	channel_clock_timer (&pulse_1);
 	channel_clock_timer (&pulse_2);
+	// clock triangle twice as it is run @ CPU speed
+	triangle_step_timer (&triangle);
+	triangle_step_timer (&triangle);
+	// step frame counter
 	step_frame_counter ();
 }
 
