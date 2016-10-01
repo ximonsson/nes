@@ -25,14 +25,14 @@ struct envelope
 {
 	uint8_t* reg;
 	int      divider;
-	int      start_flag;
+	int      start;
 	uint8_t  decay_level_counter;
 };
 
 /* clock_envelope clocks the supplied envelope linked to a channel */
 void clock_envelope (struct envelope* env)
 {
-	if (env->start_flag == 0)
+	if (env->start == 0)
 	{
 		if (env->divider == 0)
 		{
@@ -49,7 +49,7 @@ void clock_envelope (struct envelope* env)
 	}
 	else // start flag set
 	{
-		env->start_flag = 0;
+		env->start = 0;
 		env->decay_level_counter = 15;
 		env->divider = (*env->reg) & 0xF;
 	}
@@ -91,7 +91,7 @@ static void clock_channel_length_counter (struct channel* ch)
 static void channel_envelope_write (struct channel* ch, uint8_t v)
 {
 	// restart the envelope
-	ch->env.start_flag = 1;
+	ch->env.start = 1;
 	ch->sequencer = 0;
 }
 
@@ -99,7 +99,7 @@ static void channel_envelope_write (struct channel* ch, uint8_t v)
 static void channel_timer_low_write (struct channel* ch, uint8_t v)
 {
 	// restart the envelope
-	ch->env.start_flag = 1;
+	ch->env.start = 1;
 	ch->sequencer = 0;
 }
 
@@ -107,7 +107,7 @@ static void channel_timer_low_write (struct channel* ch, uint8_t v)
 static void channel_reload_len_counter (struct channel* ch, uint8_t v)
 {
 	ch->length_counter = length_counter_table[v >> 3]; // reload length counter
-	ch->env.start_flag = 1; // restart the envelope
+	ch->env.start = 1; // restart the envelope
 	ch->sequencer = 0;
 }
 
@@ -289,6 +289,78 @@ static struct triangle new_triangle_channel (uint8_t* reg)
 	return tr;
 }
 
+/* noise_periods periods to load into the noise channel */
+static uint16_t noise_periods[16] = {
+	4, 8, 16, 32, 64, 96, 128, 160, 202, 254, 380, 508, 762, 1016, 2034, 4068
+};
+
+/* noise APU */
+struct noise {
+	struct envelope env;
+	uint16_t        shift_register;
+	uint16_t        length_counter;
+	uint8_t*        reg;
+	int             timer;
+};
+
+/* noise_clock_lfsr clocks the noise channel's shift register */
+static void noise_clock_lfsr (struct noise* noise)
+{
+	uint16_t sh = noise->shift_register;
+	int shift = 1 + ((noise->reg[2] >> 7) * 5);
+	uint8_t feedback = (sh ^ (sh >> shift)) & 1;
+	noise->shift_register >>= 1;
+	noise->shift_register |= feedback << 14;
+}
+
+/* noise_clock_timer clocks the noise channel's timer */
+static void noise_clock_timer (struct noise* noise)
+{
+	if (noise->timer == 0)
+	{
+		noise->timer = noise_periods[noise->reg[2] & 0xF];
+		noise_clock_lfsr (noise);
+	}
+	else
+		noise->timer --;
+}
+
+/* noise_output returns the noise channel's envelope volume */
+static uint8_t noise_output (struct noise* noise)
+{
+	if (noise->shift_register & 1)
+		return 0;
+	else if (noise->length_counter == 0)
+		return 0;
+	return envelope_volume (&noise->env);
+}
+
+/* noise_clock_length_counter clocks the noise channel's lenght counter */
+static void noise_clock_length_counter (struct noise* noise)
+{
+	int halt = (*noise->reg) & 0x20;
+	if (!halt && noise->length_counter)
+	{
+		noise->length_counter --;
+	}
+}
+
+/* channel_reload_len_counter writes to a channels length counter / timer high register */
+static void noise_reload_len_counter (struct noise* noise, uint8_t v)
+{
+	noise->length_counter = length_counter_table[v >> 3]; // reload length counter
+	noise->env.start = 1; // restart the envelope
+}
+
+/* new_noise_channel returns a new noise channel */
+struct noise new_noise_channel (uint8_t* reg)
+{
+	struct noise noise;
+	noise.reg = reg;
+	noise.shift_register = 1;
+	return noise;
+}
+
 
 /**
  *  APU Channels
@@ -296,7 +368,7 @@ static struct triangle new_triangle_channel (uint8_t* reg)
 struct channel pulse_1;
 struct channel pulse_2;
 struct triangle triangle;
-struct channel noise;
+struct noise noise;
 
 /* APU registers */
 static uint8_t* registers;
@@ -369,6 +441,12 @@ static void triangle_timer_low_write (uint8_t value)
 static void triangle_timer_high_write (uint8_t value)
 {
 	triangle_reload_length_counter (&triangle, value);
+}
+
+/* write $400F */
+static void noise_len_cnt_write (uint8_t value)
+{
+	noise_reload_len_counter (&noise, value);
 }
 
 /* write to status register */
@@ -453,7 +531,7 @@ void nes_apu_reset ()
 	pulse_1  = new_channel (registers);
 	pulse_2  = new_channel (registers + 4);
 	triangle = new_triangle_channel (registers + 8);
-	noise    = new_channel (registers + 12);
+	noise    = new_noise_channel (registers + 12);
 
 	readers[0x15] = &status_read;
 
@@ -473,6 +551,9 @@ void nes_apu_reset ()
 	writers[0x08] = &triangle_lin_cnt_write;
 	writers[0x0A] = &triangle_timer_low_write;
 	writers[0x0B] = &triangle_timer_high_write;
+
+	// noise registers
+	writers[0x0F] = &noise_len_cnt_write;
 
 	writers[0x15] = &status_write;
 	writers[0x17] = &frame_counter_write;
@@ -500,9 +581,9 @@ static void clock_sweeps ()
 /* clock_length_counters clocks all audio channel's length counters */
 static void clock_length_counters ()
 {
-	clock_channel_length_counter (&pulse_1);
-	clock_channel_length_counter (&pulse_2);
-	clock_channel_length_counter (&noise);
+	clock_channel_length_counter  (&pulse_1);
+	clock_channel_length_counter  (&pulse_2);
+	noise_clock_length_counter    (&noise);
 	triangle_clock_length_counter (&triangle);
 }
 
@@ -538,6 +619,8 @@ void nes_apu_step ()
 	// clock pulse channels
 	channel_clock_timer (&pulse_1);
 	channel_clock_timer (&pulse_2);
+	// clock noise channel
+	noise_clock_timer (&noise);
 	// clock triangle twice as it is run @ CPU speed
 	triangle_step_timer (&triangle);
 	triangle_step_timer (&triangle);
@@ -545,8 +628,16 @@ void nes_apu_step ()
 	step_frame_counter ();
 }
 
+static uint8_t mix ()
+{
+	uint8_t p1 = channel_output (&pulse_1);
+	uint8_t p2 = channel_output (&pulse_2);
+	uint8_t tr = triangle_output (&triangle);
+	uint8_t n  = noise_output (&noise);
+	return 0;
+}
 
 void nes_apu_render ()
 {
-
+	mix ();
 }
