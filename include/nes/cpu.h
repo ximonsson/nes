@@ -6,6 +6,8 @@
 #ifndef NES_CPU_H_
 #define NES_CPU_H_
 
+#include <stdint.h>
+
 #define NES_PRG_ROM_SIZE        0x8000
 #define NES_PRG_ROM_BANK_SIZE   0x4000
 #define NES_CPU_FREQ            1789773
@@ -52,9 +54,19 @@ void nes_cpu_load_prg_rom_bank (void *data, int bank) ;
 void nes_cpu_signal (enum nes_cpu_signal sig) ;
 
 /**
+ * nes_cpu_stall stalls the CPU for the supplied number of cycles.
+ */
+void nes_cpu_stall (int /* cycles */);
+
+/**
+ * nes_cpu_read_ram returns the byte @ address in RAM.
+ */
+uint8_t nes_cpu_read_ram (uint16_t /* address */) ;
+
+/**
  *  Set the parameter p to a specific location in NES memory.
  *  Use with caution?
  */
-void __memory__ (void **p, int location) ;
+void __memory__ (void** p, int location) ;
 
 #endif

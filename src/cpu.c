@@ -4,7 +4,6 @@
 #include "nes/io.h"
 #include <stdio.h>
 #include <string.h>
-#include <stdint.h>
 #include <pthread.h>
 
 #define OAM_DMA_REGISTER    0x4014
@@ -540,6 +539,11 @@ static uint8_t mem_read (uint16_t address)
 	return b;
 }
 
+uint8_t nes_cpu_read_ram (uint16_t address)
+{
+	return mem_read (address);
+}
+
 /**
  *  Preferred abstract function for getting a value depending on addressing mode.
  *  Will make sure to call correct functions for read events and skip in case we are after the accumulator.
@@ -556,6 +560,14 @@ static uint8_t get_value (addressing_mode mode)
 }
 
 
+/* stalled containes the number of cycles to stall the CPU */
+static int stalled;
+
+void nes_cpu_stall (int cycles)
+{
+	stalled += cycles;
+}
+
 #define RST_VECTOR 0xFFFC
 /* Init the CPU to its startup state. */
 void nes_cpu_reset ()
@@ -569,6 +581,7 @@ void nes_cpu_reset ()
 
 	flags = 0;
 	cpucc = 0;
+	stalled = 0;
 
 	// load program counter
 	pc = memory[RST_VECTOR + 1];
@@ -1467,6 +1480,13 @@ void print_operation (operation* op) {
 
 int nes_cpu_step ()
 {
+	if (stalled)
+	{
+		// cpu is stalled
+		stalled --;
+		return 1;
+	}
+
 	int cc = cpucc;
 
 	// check interrupts

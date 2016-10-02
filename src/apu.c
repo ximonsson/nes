@@ -3,6 +3,12 @@
 #include <string.h>
 #include <stdio.h>
 
+/* apucc represents the APU clock cycles */
+static int apucc;
+
+/* APU registers */
+static uint8_t* registers;
+static uint8_t* frame_counter;
 
 /* length_counter_table contains lookup values for length counters */
 static uint8_t length_counter_table[32] =
@@ -358,7 +364,142 @@ struct noise new_noise_channel (uint8_t* reg)
 	struct noise noise;
 	noise.reg = reg;
 	noise.shift_register = 1;
+	noise.timer = 0;
 	return noise;
+}
+
+/* dmc_mem_reader represents the DMC channel's memory reader unit */
+struct dmc_mem_reader
+{
+	uint16_t address;   // sample address
+	uint16_t remaining; // bytes remaining
+};
+
+/* dmc_output_unit represents the DMC channel's output unit */
+struct dmc_output_unit
+{
+	uint8_t rsr;       // right shift register
+	uint8_t remaining; // bits remaining
+	uint8_t silent;    // silence flag
+	uint8_t level;     // output level
+};
+
+/* dmc_rate_index contains rates for the DMC */
+static uint16_t dmc_rate_index[16] = {
+	428, 380, 340, 320, 286, 254, 226, 214, 190, 160, 142, 128, 106,  84,  72,  54
+};
+
+/* APU Delta Modulation Channel (DMC) */
+struct dmc
+{
+	uint8_t  buffer;       // sample buffer
+	uint8_t  empty_buffer; // set if the sample buffer is empty
+	int      interrupt;    // interrupt flag
+	uint16_t timer;        // period
+	uint8_t* reg;          // register memory location
+	struct dmc_mem_reader  reader;
+	struct dmc_output_unit output;
+};
+
+/* dmc_reader_reload reloads sample address and length */
+static void dmc_reader_reload (struct dmc* dmc)
+{
+	dmc->reader.address = dmc->reg[2];
+	dmc->reader.address = 0xC000 | (dmc->reader.address << 6);
+	dmc->reader.remaining = dmc->reg[3];
+	dmc->reader.remaining = (dmc->reader.remaining << 4) | 1;
+}
+
+/* dmc_clock_reader clocks the DMC's reader unit to load the next sample into its buffer */
+static void dmc_clock_reader (struct dmc* dmc)
+{
+	nes_cpu_stall (4);
+	// read from memory
+	dmc->buffer = nes_cpu_read_ram (dmc->reader.address);
+
+	// increment address
+	dmc->reader.address ++;
+	if (dmc->reader.address == 0)
+		dmc->reader.address = 0x8000;
+
+	// decrement bytes remaining and clear the empty buffer flag
+	dmc->reader.remaining --;
+	dmc->empty_buffer = 0;
+}
+
+/**
+ * dmc_reload_output reloads the DMC's output unit's cycle by emptying the readers buffer,
+ * if not empty, else it will silence the unit.
+ * The reader is looped if needed else it outputs an IRQ signal if the flag is set.
+ */
+static void dmc_reload_output (struct dmc* dmc)
+{
+	// reload output cycle
+	dmc->output.remaining = 8;
+
+	if (dmc->empty_buffer) // empty sample buffer - silence the output
+		dmc->output.silent = 1;
+	else
+	{
+		// empty buffer into output shift register
+		dmc->output.silent = 0;
+		dmc->output.rsr = dmc->buffer;
+		dmc->empty_buffer = 1;
+
+		// read a new sample
+		if (dmc->reader.remaining == 0)
+		{
+			if (dmc->reg[0] & 0x40) // loop
+				dmc_reader_reload (dmc);
+			else if (dmc->reg[0] & 0x80) // signal IRQ
+				nes_cpu_signal (IRQ);
+		}
+
+		if (dmc->reader.remaining)
+			dmc_clock_reader (dmc);
+	}
+}
+
+static void dmc_clock_output (struct dmc* dmc)
+{
+	if (!dmc->output.silent)
+	{
+		// if not silent update the output level
+		if ((dmc->output.rsr & 1) && dmc->output.level <= 125)
+			dmc->output.level += 2;
+		else if ((~dmc->output.rsr & 1) && dmc->output.level >= 2)
+			dmc->output.level -= 2;
+	}
+
+	// update output cycle
+	dmc->output.rsr >>= 1;
+	dmc->output.remaining --;
+
+	if (dmc->output.remaining == 0) // reload cycle
+		dmc_reload_output (dmc);
+}
+
+/* dmc_clock clock the DMC units timer */
+static void dmc_clock (struct dmc* dmc)
+{
+	if (dmc->timer == 0)
+	{
+		// reload timer and change output level
+		dmc->timer = dmc_rate_index[dmc->reg[0] & 0xF];
+	}
+	else
+	{
+		dmc->timer --;
+		// update output unit
+		dmc_clock_output (dmc);
+	}
+}
+
+/* dmc_output outputs sample from the DMC */
+static uint8_t dmc_output (struct dmc* dmc)
+{
+	// return the output units level
+	return dmc->output.level;
 }
 
 
@@ -369,10 +510,72 @@ struct channel pulse_1;
 struct channel pulse_2;
 struct triangle triangle;
 struct noise noise;
+struct dmc dmc;
 
-/* APU registers */
-static uint8_t* registers;
-static uint8_t* frame_counter;
+/* clock_envelopes clocks all the audio channel's envelope units */
+static void clock_envelopes ()
+{
+	clock_envelope (&pulse_1.env);
+	clock_envelope (&pulse_2.env);
+	clock_envelope (&noise.env);
+}
+
+/* clock_sweeps clocks the pulse channel's sweep units */
+static void clock_sweeps ()
+{
+	channel_clock_sweep (&pulse_1);
+	channel_clock_sweep (&pulse_2);
+}
+
+/* clock_length_counters clocks all audio channel's length counters */
+static void clock_length_counters ()
+{
+	clock_channel_length_counter  (&pulse_1);
+	clock_channel_length_counter  (&pulse_2);
+	noise_clock_length_counter    (&noise);
+	triangle_clock_length_counter (&triangle);
+}
+
+/* step_frame_counter steps the frame counter/sequencer */
+static void step_frame_counter ()
+{
+	if (apucc == 3728 || apucc == 7456 || apucc == 11185)
+	{
+		clock_envelopes ();
+		triangle_clock_linear_counter (&triangle);
+		if (apucc == 7456)
+		{
+			clock_length_counters ();
+			clock_sweeps ();
+		}
+	}
+	if ((*frame_counter) & 0x80)
+	{
+		// 5-step mode
+		if (apucc == 18640)
+		{
+			clock_envelopes ();
+			triangle_clock_linear_counter (&triangle);
+			clock_length_counters ();
+			clock_sweeps ();
+			apucc = 0;
+		}
+	}
+	else
+	{
+		// 4-step mode
+		if (apucc == 14914)
+		{
+			clock_envelopes ();
+			triangle_clock_linear_counter (&triangle);
+			clock_length_counters ();
+			clock_sweeps ();
+			apucc = 0;
+			if (~(*frame_counter) & 0x40)
+				nes_cpu_signal (IRQ);
+		}
+	}
+}
 
 
 /* APU Register Writers --------------------------------------------------------------------------------------------- */
@@ -449,13 +652,26 @@ static void noise_len_cnt_write (uint8_t value)
 	noise_reload_len_counter (&noise, value);
 }
 
+/* dmc_direct_load loads the supplied value to the DMC's output unit level */
+static void dmc_direct_load (uint8_t v)
+{
+	dmc.output.level = v & 0x7F;
+}
+
 /* write to status register */
 static void status_write (uint8_t value)
 {
 	if (~value & 0x10)
 	{
 		// silence DMC
+		dmc.reader.remaining = 0;
 	}
+	else if (dmc.reader.remaining == 0)
+	{
+		// restart DMC
+		dmc_reader_reload (&dmc);
+	}
+
 	if (~value & 0x08)
 		noise.length_counter = 0; // silence noise
 
@@ -467,12 +683,21 @@ static void status_write (uint8_t value)
 
 	if (~value & 0x01)
 		pulse_1.length_counter = 0; // silence pulse 1
+
+	registers[0x10] &= 0x7F; // clear the DMC interrupt flag
 }
 
 /* write to frame counter register */
 static void frame_counter_write (uint8_t value)
 {
-
+	apucc = 0;
+	if (value & 0x80)
+	{
+		clock_envelopes ();
+		triangle_clock_linear_counter (&triangle);
+		clock_length_counters ();
+		clock_sweeps ();
+	}
 }
 
 /* End APU Register Writers ----------------------------------------------------------------------------------------- */
@@ -498,8 +723,14 @@ static uint8_t status_read ()
 	uint8_t pulse_2_enabled  = pulse_2.length_counter > 0;
 	uint8_t noise_enabled    = noise.length_counter > 0;
 	uint8_t triangle_enabled = triangle.length_counter > 0;
-	uint8_t ret = (noise_enabled << 3) | (triangle_enabled << 2) | (pulse_2_enabled << 1) || pulse_1_enabled;
-	// TODO add DMC enabled flag and interrupt status
+	uint8_t dmc_enabled      = dmc.reader.remaining > 0;
+
+	uint8_t ret = (dmc_enabled << 4) | (noise_enabled << 3) | (triangle_enabled << 2) | (pulse_2_enabled << 1) || pulse_1_enabled;
+	ret |= registers[0x10] & 0x80; // dmc interrupt flag
+	ret |= registers[0x17] & 0x40; // frame interrupt flag
+
+	registers[0x17] &= 0xD0; // clear frame interruot flag
+
 	return ret;
 }
 
@@ -517,9 +748,6 @@ uint8_t nes_apu_register_read (uint16_t address)
 	return 0;
 }
 
-/* apucc represents the APU clock cycles */
-static int apucc;
-
 void nes_apu_reset ()
 {
 	// get memory location of APU registers
@@ -532,6 +760,7 @@ void nes_apu_reset ()
 	pulse_2  = new_channel (registers + 4);
 	triangle = new_triangle_channel (registers + 8);
 	noise    = new_noise_channel (registers + 12);
+	dmc.reg = registers + 0x10;
 
 	readers[0x15] = &status_read;
 
@@ -555,75 +784,35 @@ void nes_apu_reset ()
 	// noise registers
 	writers[0x0F] = &noise_len_cnt_write;
 
+	writers[0x11] = &dmc_direct_load;
+
 	writers[0x15] = &status_write;
 	writers[0x17] = &frame_counter_write;
 
 	apucc = 0; // reset clock cycles
 
-// 	nes_apu_register_write (0x4015, 0); // silence all channels
-}
-
-/* clock_envelopes clocks all the audio channel's envelope units */
-static void clock_envelopes ()
-{
-	clock_envelope (&pulse_1.env);
-	clock_envelope (&pulse_2.env);
-	clock_envelope (&noise.env);
-}
-
-/* clock_sweeps clocks the pulse channel's sweep units */
-static void clock_sweeps ()
-{
-	channel_clock_sweep (&pulse_1);
-	channel_clock_sweep (&pulse_2);
-}
-
-/* clock_length_counters clocks all audio channel's length counters */
-static void clock_length_counters ()
-{
-	clock_channel_length_counter  (&pulse_1);
-	clock_channel_length_counter  (&pulse_2);
-	noise_clock_length_counter    (&noise);
-	triangle_clock_length_counter (&triangle);
-}
-
-/* step_frame_counter steps the frame counter/sequencer */
-static void step_frame_counter ()
-{
-	if ((*frame_counter) & 0x80)
-	{
-		// 5-step mode
-		if (apucc == 3728)
-		{
-			// step envelopes
-			clock_envelopes ();
-			triangle_clock_linear_counter (&triangle);
-		}
-		else if (apucc == 7456)
-		{
-			clock_length_counters ();
-			clock_sweeps ();
-		}
-		// and more ...
-	}
-	else
-	{
-		// 4-step mode
-	}
+ 	status_write (0); // silence all channels
 }
 
 
 void nes_apu_step ()
 {
 	apucc ++;
+
 	// clock pulse channels
 	channel_clock_timer (&pulse_1);
 	channel_clock_timer (&pulse_2);
+
 	// clock noise channel
 	noise_clock_timer (&noise);
+
 	// clock triangle twice as it is run @ CPU speed
 	triangle_step_timer (&triangle);
 	triangle_step_timer (&triangle);
+
+	// clock dmc timer
+	dmc_clock (&dmc);
+
 	// step frame counter
 	step_frame_counter ();
 }
@@ -634,6 +823,7 @@ static uint8_t mix ()
 	uint8_t p2 = channel_output (&pulse_2);
 	uint8_t tr = triangle_output (&triangle);
 	uint8_t n  = noise_output (&noise);
+	uint8_t d  = dmc_output (&dmc);
 	return 0;
 }
 
