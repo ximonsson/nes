@@ -817,14 +817,18 @@ void nes_apu_step ()
 	step_frame_counter ();
 }
 
-static uint8_t mix ()
+static float mix ()
 {
 	uint8_t p1 = channel_output (&pulse_1);
 	uint8_t p2 = channel_output (&pulse_2);
 	uint8_t tr = triangle_output (&triangle);
 	uint8_t n  = noise_output (&noise);
 	uint8_t d  = dmc_output (&dmc);
-	return 0;
+
+	// we are using the less precise linear approximation
+	float pulse_out = 0.00752 * (p1 + p2);
+	float tnd_out = 0.00851 * tr + 0.00494 * n + 0.00335 * d;
+	return pulse_out + tnd_out;
 }
 
 void nes_apu_render ()
