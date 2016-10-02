@@ -213,6 +213,10 @@ struct channel new_channel (uint8_t* reg)
 	ch.sequencer      = 0;
 	ch.length_counter = 0;
 	ch.reload_sweep   = 0;
+	ch.sweep          = 0;
+	ch.env.divider = 0;
+	ch.env.start = 0;
+	ch.env.decay_level_counter = 0;
 
 	return ch;
 }
@@ -362,9 +366,12 @@ static void noise_reload_len_counter (struct noise* noise, uint8_t v)
 struct noise new_noise_channel (uint8_t* reg)
 {
 	struct noise noise;
-	noise.reg = reg;
+	noise.reg = noise.env.reg = reg;
 	noise.shift_register = 1;
 	noise.timer = 0;
+	noise.env.divider = 0;
+	noise.env.start = 0;
+	noise.env.decay_level_counter = 0;
 	return noise;
 }
 
@@ -571,8 +578,8 @@ static void step_frame_counter ()
 			clock_length_counters ();
 			clock_sweeps ();
 			apucc = 0;
-			if (~(*frame_counter) & 0x40)
-				nes_cpu_signal (IRQ);
+			// if (~(*frame_counter) & 0x40)
+		    //		nes_cpu_signal (IRQ);
 		}
 	}
 }
@@ -806,7 +813,7 @@ void nes_apu_step ()
 	// clock noise channel
 	noise_clock_timer (&noise);
 
-	// clock triangle twice as it is run @ CPU speed
+	// clock triangle twice as it runs @ CPU speed
 	triangle_step_timer (&triangle);
 	triangle_step_timer (&triangle);
 
