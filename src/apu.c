@@ -35,8 +35,17 @@ struct envelope
 	uint8_t  decay_level_counter;
 };
 
-/* clock_envelope clocks the supplied envelope linked to a channel */
-void clock_envelope (struct envelope* env)
+/* envelop_init initialize the envelope with reg as pointer to it's register */
+static void envelope_init (struct envelope* env, uint8_t* reg)
+{
+	env->reg                 = reg;
+	env->divider             = 0;
+	env->start               = 0;
+	env->decay_level_counter = 0;
+}
+
+/* envelope_clock clocks the supplied envelope linked to a channel */
+static void envelope_clock (struct envelope* env)
 {
 	if (env->start == 0)
 	{
@@ -61,6 +70,10 @@ void clock_envelope (struct envelope* env)
 	}
 }
 
+/**
+ * envelope_volume returns the current volume of the envelope wether it is constant
+ * or controlled by it's decay level counter.
+ */
 static uint8_t envelope_volume (struct envelope* env)
 {
 	if ((*env->reg) & 0x10) {
@@ -203,22 +216,16 @@ static uint8_t channel_output (struct channel* ch)
 	return envelope_volume (&ch->env);
 }
 
-/* new_channel creates a new channel from a memory location to the first (of four) register */
-struct channel new_channel (uint8_t* reg)
+/* channel_init initializes a new channel from a memory location to the first (of four) register */
+static void channel_init (struct channel* ch, uint8_t* reg)
 {
-	struct channel ch;
-	ch.reg            =
-	ch.env.reg        = reg;
-	ch.timer          = 0;
-	ch.sequencer      = 0;
-	ch.length_counter = 0;
-	ch.reload_sweep   = 0;
-	ch.sweep          = 0;
-	ch.env.divider = 0;
-	ch.env.start = 0;
-	ch.env.decay_level_counter = 0;
-
-	return ch;
+	ch->reg = reg;
+	ch->timer = 0;
+	ch->sequencer = 0;
+	ch->length_counter = 0;
+	ch->reload_sweep = 0;
+	ch->sweep = 0;
+	envelope_init (&ch->env, reg);
 }
 
 /* triangle_sequence is the 32 step sequence played by the triangle channel */
@@ -238,6 +245,17 @@ struct triangle
 	int      linear_counter_reload;
 	uint8_t* reg;
 };
+
+/* triangle_init initialize the triangle channel using reg as the base of it's four registers */
+static void triangle_init (struct triangle* tr, uint8_t* reg)
+{
+	tr->reg = reg;
+	tr->timer = 0;
+	tr->length_counter = 0;
+	tr->linear_counter = 0;
+	tr->linear_counter_reload = 0;
+	tr->sequencer = 0;
+}
 
 /* triangle_step_timer will step the provided triangle channel's timer */
 static void triangle_step_timer (struct triangle* tr)
@@ -289,14 +307,6 @@ static void triangle_reload_length_counter (struct triangle* tr, uint8_t v)
 static uint8_t triangle_output (struct triangle* tr)
 {
 	return triangle_sequence[tr->sequencer];
-}
-
-/* new_triangle_channel initializes a new triangle channel struct with registers @ base address reg */
-static struct triangle new_triangle_channel (uint8_t* reg)
-{
-	struct triangle tr;
-	tr.reg = reg;
-	return tr;
 }
 
 /* noise_periods periods to load into the noise channel */
@@ -363,16 +373,12 @@ static void noise_reload_len_counter (struct noise* noise, uint8_t v)
 }
 
 /* new_noise_channel returns a new noise channel */
-struct noise new_noise_channel (uint8_t* reg)
+static void noise_init (struct noise* noise, uint8_t* reg)
 {
-	struct noise noise;
-	noise.reg = noise.env.reg = reg;
-	noise.shift_register = 1;
-	noise.timer = 0;
-	noise.env.divider = 0;
-	noise.env.start = 0;
-	noise.env.decay_level_counter = 0;
-	return noise;
+	noise->reg = reg;
+	noise->shift_register = 1;
+	noise->timer = 0;
+	envelope_init (&noise->env, reg);
 }
 
 /* dmc_mem_reader represents the DMC channel's memory reader unit */
@@ -381,6 +387,13 @@ struct dmc_mem_reader
 	uint16_t address;   // sample address
 	uint16_t remaining; // bytes remaining
 };
+
+/* dmc_mem_reader_init initializes the DMC memory reader unit */
+static void dmc_mem_reader_init (struct dmc_mem_reader* r)
+{
+	r->address = 0;
+	r->remaining = 0;
+}
 
 /* dmc_output_unit represents the DMC channel's output unit */
 struct dmc_output_unit
@@ -391,6 +404,15 @@ struct dmc_output_unit
 	uint8_t level;     // output level
 };
 
+/* dmc_output_unit_init initializes the DMC output unit. Will set the unit to silent. */
+static void dmc_output_unit_init (struct dmc_output_unit* o)
+{
+	o->rsr = 0;
+	o->remaining = 0;
+	o->silent = 1;
+	o->level = 0;
+}
+
 /* dmc_rate_index contains rates for the DMC */
 static uint16_t dmc_rate_index[16] = {
 	428, 380, 340, 320, 286, 254, 226, 214, 190, 160, 142, 128, 106,  84,  72,  54
@@ -399,14 +421,24 @@ static uint16_t dmc_rate_index[16] = {
 /* APU Delta Modulation Channel (DMC) */
 struct dmc
 {
-	uint8_t  buffer;       // sample buffer
-	uint8_t  empty_buffer; // set if the sample buffer is empty
-	int      interrupt;    // interrupt flag
-	uint16_t timer;        // period
-	uint8_t* reg;          // register memory location
-	struct dmc_mem_reader  reader;
-	struct dmc_output_unit output;
+	uint8_t  buffer;               // sample buffer
+	uint8_t  empty_buffer;         // set if the sample buffer is empty
+	uint16_t timer;                // period
+	uint8_t* reg;                  // register memory location
+	struct dmc_mem_reader  reader; // DMC memory reader
+	struct dmc_output_unit output; // DMC output unit
 };
+
+/* dmc_init initialize the DMC. */
+static void dmc_init (struct dmc* dmc, uint8_t* reg)
+{
+	dmc->buffer = 0;
+	dmc->empty_buffer = 1;
+	dmc->timer = 0;
+	dmc->reg = reg;
+	dmc_mem_reader_init (&dmc->reader);
+	dmc_output_unit_init (&dmc->output);
+}
 
 /* dmc_reader_reload reloads sample address and length */
 static void dmc_reader_reload (struct dmc* dmc)
@@ -491,15 +523,13 @@ static void dmc_clock (struct dmc* dmc)
 {
 	if (dmc->timer == 0)
 	{
+		// update output unit
+		dmc_clock_output (dmc);
 		// reload timer and change output level
 		dmc->timer = dmc_rate_index[dmc->reg[0] & 0xF];
 	}
 	else
-	{
 		dmc->timer --;
-		// update output unit
-		dmc_clock_output (dmc);
-	}
 }
 
 /* dmc_output outputs sample from the DMC */
@@ -508,7 +538,6 @@ static uint8_t dmc_output (struct dmc* dmc)
 	// return the output units level
 	return dmc->output.level;
 }
-
 
 /**
  *  APU Channels
@@ -522,9 +551,9 @@ struct dmc dmc;
 /* clock_envelopes clocks all the audio channel's envelope units */
 static void clock_envelopes ()
 {
-	clock_envelope (&pulse_1.env);
-	clock_envelope (&pulse_2.env);
-	clock_envelope (&noise.env);
+	envelope_clock (&pulse_1.env);
+	envelope_clock (&pulse_2.env);
+	envelope_clock (&noise.env);
 }
 
 /* clock_sweeps clocks the pulse channel's sweep units */
@@ -762,12 +791,12 @@ void nes_apu_reset ()
 
 	frame_counter = registers + 0x17; // frame counter register
 
-	// set registers for audio channels
-	pulse_1  = new_channel (registers);
-	pulse_2  = new_channel (registers + 4);
-	triangle = new_triangle_channel (registers + 8);
-	noise    = new_noise_channel (registers + 12);
-	dmc.reg = registers + 0x10;
+	// initialize audio channels
+	channel_init (&pulse_1, registers);
+	channel_init (&pulse_2, registers + 4);
+	triangle_init (&triangle, registers + 8);
+	noise_init (&noise, registers + 12);
+	dmc_init (&dmc, registers + 16);
 
 	readers[0x15] = &status_read;
 
