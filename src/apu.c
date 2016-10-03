@@ -607,12 +607,11 @@ static void step_frame_counter ()
 			clock_length_counters ();
 			clock_sweeps ();
 			apucc = 0;
-			// if (~(*frame_counter) & 0x40)
-		    //		nes_cpu_signal (IRQ);
+			if (~(*frame_counter) & 0x40)
+		    	nes_cpu_signal (IRQ);
 		}
 	}
 }
-
 
 /* APU Register Writers --------------------------------------------------------------------------------------------- */
 
@@ -761,12 +760,15 @@ static uint8_t status_read ()
 	uint8_t triangle_enabled = triangle.length_counter > 0;
 	uint8_t dmc_enabled      = dmc.reader.remaining > 0;
 
-	uint8_t ret = (dmc_enabled << 4) | (noise_enabled << 3) | (triangle_enabled << 2) | (pulse_2_enabled << 1) || pulse_1_enabled;
-	ret |= registers[0x10] & 0x80; // dmc interrupt flag
-	ret |= registers[0x17] & 0x40; // frame interrupt flag
+	uint8_t ret = (registers[0x10] & 0x80) |
+	              (registers[0x17] & 0x40) |
+	              (dmc_enabled      << 4)  |
+	              (noise_enabled    << 3)  |
+	              (triangle_enabled << 2)  |
+	              (pulse_2_enabled  << 1)  |
+	              pulse_1_enabled;
 
 	registers[0x17] &= 0xD0; // clear frame interruot flag
-
 	return ret;
 }
 
@@ -853,6 +855,7 @@ void nes_apu_step ()
 	step_frame_counter ();
 }
 
+/* mix will take output from all channels and return the resulting mix. */
 static float mix ()
 {
 	uint8_t p1 = channel_output (&pulse_1);
@@ -867,7 +870,8 @@ static float mix ()
 	return pulse_out + tnd_out;
 }
 
-void nes_apu_render ()
+float nes_apu_render ()
 {
-	mix ();
+	// TODO there should be some high-pass and low-pass filtering
+	return mix ();
 }

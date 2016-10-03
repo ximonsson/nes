@@ -644,7 +644,7 @@ static void nmi ()
 /* irq generates an interrupt, if the interrupts are not disabled, and loads the IRQ vector. */
 static void irq ()
 {
-	if (ps & ~INTERRUPT)
+	if (~ps & INTERRUPT)
 	{
 		uint16_t irq_vector = memory[IRQ_VECTOR + 1];
 		irq_vector = (irq_vector << 8) | memory[IRQ_VECTOR];
