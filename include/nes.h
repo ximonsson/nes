@@ -14,14 +14,14 @@
  */
 typedef enum controller_keys
 {
-	nes_a       = 0x01,
-	nes_b       = 0x02,
-	nes_select  = 0x04,
-	nes_start   = 0x08,
-	nes_up      = 0x10,
-	nes_down    = 0x20,
-	nes_left    = 0x40,
-	nes_right   = 0x80
+	nes_button_a       = 0x01,
+	nes_button_b       = 0x02,
+	nes_button_select  = 0x04,
+	nes_button_start   = 0x08,
+	nes_button_up      = 0x10,
+	nes_button_down    = 0x20,
+	nes_button_left    = 0x40,
+	nes_button_right   = 0x80
 }
 nes_controller_keys;
 
@@ -31,6 +31,18 @@ nes_controller_keys;
  *  This function is blocking.
  */
 void nes_run (const char *file) ;
+
+/**
+ * nes_start resets the hardware components and loads the game @ filepath
+ * but will not start execution.
+ * Returns non-zero error code in case there was an error reading the file.
+ */
+int nes_start (const char* /* file */) ;
+
+/**
+ * nes_step_frame executes until an entire frame is rendered and then waits.
+ */
+void nes_step_frame () ;
 
 /**
  *  Stop the current NES game running.
@@ -55,12 +67,12 @@ void nes_release_button (unsigned int player, enum controller_keys key) ;
 /**
  *  Save the current game as name.
  */
-void nes_save (const char *name) ;
+void nes_save_game (const char *name) ;
 
 /**
  *  Load previous game state from the save file at location.
  */
-void nes_load (const char *location) ;
+void nes_load_save (const char *location) ;
 
 /**
  *  Get a pointer to a finished rendered frame by the NES.

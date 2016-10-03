@@ -238,34 +238,38 @@ void parse_arguments (char **args)
 
 }
 
-
+// connection to Pulse Audio server
 static pa_simple* audioconn;
 
-void audio_init ()
+// initialize audio connection
+static void audio_init (int rate)
 {
 	pa_sample_spec ss;
 	ss.format = PA_SAMPLE_S16NE;
 	ss.channels = 2;
-	ss.rate = 44100;
+	ss.rate = rate;
 
 	audioconn = pa_simple_new (NULL, "NES", PA_STREAM_PLAYBACK, NULL, "Audio", &ss, NULL, NULL, NULL);
 }
 
-int audio_play_samples (void* samples, size_t size)
+// play audio samples
+static int audio_play ()
 {
 	int err;
-	pa_simple_write (audioconn, samples, size, &err);
+	pa_simple_write (audioconn, NULL, 0, &err);
 	return err;
 }
 
-void audio_quit ()
+// deinitialize audio
+static void audio_quit ()
 {
 	pa_simple_free (audioconn);
 }
 
+// if the game is running
+static int running = 0;
 
-static int running = 1;
-
+// handle user input
 static void handle_events ()
 {
 	SDL_Event event;
@@ -277,7 +281,6 @@ static void handle_events ()
 		{
 			case SDL_QUIT:
 				running = 0;
-				nes_stop ();
 				break;
 
 			case SDL_KEYDOWN:
@@ -288,52 +291,45 @@ static void handle_events ()
 				switch (event.key.keysym.sym)
 				{
 					case SDLK_a:
-						key_func (0, nes_left);
+						key_func (0, nes_button_left);
 						break;
 
 					case SDLK_s:
-						key_func (0, nes_down);
+						key_func (0, nes_button_down);
 						break;
 
 					case SDLK_d:
-						key_func (0, nes_right);
+						key_func (0, nes_button_right);
 						break;
 
 					case SDLK_w:
-						key_func (0, nes_up);
+						key_func (0, nes_button_up);
 						break;
 
 					case SDLK_j:
-						key_func (0, nes_a);
+						key_func (0, nes_button_a);
 						break;
 
 					case SDLK_k:
-						key_func (0, nes_b);
+						key_func (0, nes_button_b);
 						break;
 
 					case SDLK_SPACE:
-						key_func (0, nes_start);
+						key_func (0, nes_button_start);
 						break;
 
 					case SDLK_x:
-						key_func (0, nes_select);
+						key_func (0, nes_button_select);
 						break;
 
 					case SDLK_q:
 						running = 0;
-						nes_stop ();
 						break;
 				}
 			break;
 		}
 		usleep (5000);
 	}
-}
-
-void* run (void* arg)
-{
-	nes_run ((const char*) arg);
-	return NULL;
 }
 
 
@@ -343,24 +339,26 @@ int main (int argc, char **argv)
 	parse_arguments (argv);
 	init_screen (256 * 2.5, 240 * 2.5);
 	init_opengl ();
-	audio_init ();
+	audio_init (44100);
+
+	if (nes_start (argv[1]) != 0)
+	{
+		fprintf (stderr, "error opening game file\n");
+		return 1;
+	}
 
 	// run game
 	running = 1;
-	pthread_t run_thread;
-	pthread_create (&run_thread, NULL, run, argv[1]);
-
 	while (running)
 	{
+		nes_step_frame ();
 		draw ();
-		// audio_play_samples (samples, n);
+		audio_play ();
 		handle_events ();
-		usleep (5000);
 	}
 
-	printf ("done\n");
 	// deinit
-	pthread_join (run_thread, NULL);
+	nes_stop ();
 	quit_opengl ();
 	audio_quit ();
 	return 0;

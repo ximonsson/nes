@@ -11,24 +11,14 @@
 
 #define INES_HEADER_SIZE 16
 
-/**
-*  Different status flags during run.
-*/
-enum status_flags
-{
-	PAUSE   = 0x01,
-	STOP    = 0x02
-};
-
 
 static uint8_t* prg_rom = 0;
 static uint8_t* chr_rom = 0;
-static int      flags   = STOP;
 
 
 /**
-*  Parse an iNES type ROM file.
-*/
+ *  Parse an iNES type ROM file.
+ */
 static int load_ines (FILE *fp)
 {
 	unsigned char header[INES_HEADER_SIZE];
@@ -121,19 +111,22 @@ static int load_ines (FILE *fp)
 	switch (mirroring)
 	{
 		case MIRROR_HORIZONTAL:
-			printf ("HORIZONTAL\n"); break;
+			printf ("HORIZONTAL\n");
+			break;
 		case MIRROR_VERTICAL:
-			printf ("VERTICAL\n"); break;
+			printf ("VERTICAL\n");
+			break;
 		case MIRROR_FOUR_SCREEN:
-			printf ("FOUR_SCREEN\n"); break;
+			printf ("FOUR_SCREEN\n");
+			break;
 	}
 
 	return 0;
 }
 
 /**
-*  Open a NES ROM file.
-*/
+ *  Open a NES ROM file.
+ */
 static int load_game (const char* file)
 {
 	FILE* fp = fopen (file, "rb");
@@ -149,80 +142,61 @@ end:
 	return ret;
 }
 
-/**
-*  Run game in file.
-*/
-void nes_run (const char* file)
+
+void nes_stop ()
 {
-	flags = 0;
-
-	// load game
-	if (load_game (file) != 0)
-	{
-		fprintf (stderr, "error opening file\n");
-		return;
-	}
-
-	// init hardware
-	nes_cpu_reset ();
-	nes_ppu_reset ();
-	nes_apu_reset ();
-
-	// run the game
-	// struct timespec timer;
-	// timer.tv_sec = 0;
-	int cc = 0;
-	while (~flags & STOP)
-	{
-		// TODO check pause
-
-		// perform CPU instruction
-		cc = nes_cpu_step ();
-		// render on PPU
-		for (int i = 0; i < cc * 3; i ++)
-		{
-			nes_ppu_step ();
-		}
-		// TODO render audio
-
-		// TODO emulate correct CPU frequency
-		// timer.tv_nsec = 559 * cc;
-		// nanosleep (&timer, NULL);
-	}
-
 	// cleanup
 	free (prg_rom);
 	free (chr_rom);
 	prg_rom = 0;
 }
 
+// keep track of PPU cycles to know when a frame is done
+static int ppucc;
 
-void nes_stop ()
+int nes_start (const char* file)
 {
-	flags |= STOP;
-	// nes_cpu_stop ();
+	// load game
+	if (load_game (file) != 0)
+		return 1;
+
+	// init hardware
+	nes_cpu_reset ();
+	nes_ppu_reset ();
+	nes_apu_reset ();
+	ppucc = 0;
+
+	return 0;
+}
+
+void nes_step_frame ()
+{
+	// number of CPU cycles run during one step
+	int cc;
+	// run until a frame has been fully rendered
+	while (ppucc < PPUCC_PER_SCANLINE * SCANLINES_PER_FRAME)
+	{
+		cc = nes_cpu_step ();
+		// render on PPU
+		for (int i = 0; i < cc * 3; i ++)
+			nes_ppu_step ();
+		// render audio
+		for (int i = 0; i < cc / 2; i ++) // TODO some times an APU render cycle is going to be missed
+			nes_apu_step ();
+
+		ppucc += cc;
+		// TODO emulate correct timings
+	}
+	ppucc %= PPUCC_PER_SCANLINE * SCANLINES_PER_FRAME;
 }
 
 
-void nes_pause ()
-{
-	if (flags & STOP)
-		return;
-	flags ^= PAUSE;
-}
-
-
-/**
-*  Register press event to player's controller.
-*/
 void nes_press_button (unsigned int player, enum controller_keys key)
 {
 	nes_io_press_key (player, key);
 }
 
-/**
-*  Register release event to player's controller.
-*/
+
 void nes_release_button (unsigned int player, enum controller_keys key)
 {
 	nes_io_release_key (player, key);
