@@ -154,6 +154,10 @@ void nes_stop ()
 // keep track of PPU cycles to know when a frame is done
 static int ppucc;
 
+// APU is clocked every 2nd CPU cycle, and we are dividing by integers, therefor
+// we are keeping a backlog when stepping uneven amount of CPU cycles.
+static int apucc_backlog;
+
 int nes_start (const char* file)
 {
 	// load game
@@ -165,9 +169,11 @@ int nes_start (const char* file)
 	nes_ppu_reset ();
 	nes_apu_reset ();
 	ppucc = 0;
+	apucc_backlog = 0;
 
 	return 0;
 }
+
 
 void nes_step_frame ()
 {
@@ -177,14 +183,17 @@ void nes_step_frame ()
 	while (ppucc < PPUCC_PER_SCANLINE * SCANLINES_PER_FRAME)
 	{
 		cc = nes_cpu_step ();
+
 		// render on PPU
 		for (int i = 0; i < cc * 3; i ++)
 			nes_ppu_step ();
+
 		// render audio
-		for (int i = 0; i < cc / 2; i ++) // TODO some times an APU render cycle is going to be missed
+		for (int i = 0; i < (cc + apucc_backlog) / 2; i ++)
 			nes_apu_step ();
 
-		ppucc += cc;
+		ppucc += cc * 3;
+		apucc_backlog = (cc + apucc_backlog) & 1;
 		// TODO emulate correct timings
 	}
 	ppucc %= PPUCC_PER_SCANLINE * SCANLINES_PER_FRAME;

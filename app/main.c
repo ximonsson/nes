@@ -245,7 +245,7 @@ static pa_simple* audioconn;
 static void audio_init (int rate)
 {
 	pa_sample_spec ss;
-	ss.format = PA_SAMPLE_S16NE;
+	ss.format = PA_SAMPLE_FLOAT32NE;
 	ss.channels = 2;
 	ss.rate = rate;
 
@@ -256,7 +256,9 @@ static void audio_init (int rate)
 static int audio_play ()
 {
 	int err;
-	pa_simple_write (audioconn, NULL, 0, &err);
+	float* buf; size_t size;
+	nes_audio_samples (&buf, &size);
+	pa_simple_write (audioconn, buf, size * sizeof (float), &err);
 	return err;
 }
 
@@ -328,12 +330,11 @@ static void handle_events ()
 				}
 			break;
 		}
-		usleep (5000);
 	}
 }
 
 
-int main (int argc, char **argv)
+int main (int argc, char** argv)
 {
 	// init
 	parse_arguments (argv);

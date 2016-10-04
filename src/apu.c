@@ -17,15 +17,6 @@ static uint8_t length_counter_table[32] =
 	12, 16, 24, 18, 48, 20, 96, 22, 192, 24, 72, 26, 16, 28, 32, 30
 };
 
-/* duty_sequence are the different waveform sequences dependent on a pulse channels duty */
-static uint8_t duty_sequence[4][8] =
-{
-	{ 0, 1, 0, 0, 0, 0, 0, 0 },
-	{ 0, 1, 1, 0, 0, 0, 0, 0 },
-	{ 0, 1, 1, 1, 1, 0, 0, 0 },
-	{ 1, 0, 0, 1, 1, 1, 1, 1 }
-};
-
 /* envelope linked to a channel */
 struct envelope
 {
@@ -197,6 +188,15 @@ static void channel_clock_timer (struct channel* ch)
 	else // decrement timer
 		ch->timer --;
 }
+
+/* duty_sequence are the different waveform sequences for a pulse channel */
+static uint8_t duty_sequence[4][8] =
+{
+	{ 0, 1, 0, 0, 0, 0, 0, 0 },
+	{ 0, 1, 1, 0, 0, 0, 0, 0 },
+	{ 0, 1, 1, 1, 1, 0, 0, 0 },
+	{ 1, 0, 0, 1, 1, 1, 1, 1 }
+};
 
 /* channel_output gives the next output from the channel */
 static uint8_t channel_output (struct channel* ch)
@@ -572,17 +572,25 @@ static void clock_length_counters ()
 	triangle_clock_length_counter (&triangle);
 }
 
+static void clock_all ()
+{
+	clock_envelopes ();
+	triangle_clock_linear_counter (&triangle);
+	clock_length_counters ();
+	clock_sweeps ();
+}
+
 /* step_frame_counter steps the frame counter/sequencer */
 static void step_frame_counter ()
 {
 	if (apucc == 3728 || apucc == 7456 || apucc == 11185)
 	{
-		clock_envelopes ();
-		triangle_clock_linear_counter (&triangle);
 		if (apucc == 7456)
+			clock_all ();
+		else
 		{
-			clock_length_counters ();
-			clock_sweeps ();
+			clock_envelopes ();
+			triangle_clock_linear_counter (&triangle);
 		}
 	}
 	if ((*frame_counter) & 0x80)
@@ -590,10 +598,7 @@ static void step_frame_counter ()
 		// 5-step mode
 		if (apucc == 18640)
 		{
-			clock_envelopes ();
-			triangle_clock_linear_counter (&triangle);
-			clock_length_counters ();
-			clock_sweeps ();
+			clock_all ();
 			apucc = 0;
 		}
 	}
@@ -602,11 +607,9 @@ static void step_frame_counter ()
 		// 4-step mode
 		if (apucc == 14914)
 		{
-			clock_envelopes ();
-			triangle_clock_linear_counter (&triangle);
-			clock_length_counters ();
-			clock_sweeps ();
+			clock_all ();
 			apucc = 0;
+			// generate interrupt
 			if (~(*frame_counter) & 0x40)
 		    	nes_cpu_signal (IRQ);
 		}
@@ -832,10 +835,12 @@ void nes_apu_reset ()
  	status_write (0); // silence all channels
 }
 
+static int sample_rate = NES_CPU_FREQ / 44100 + 1;
 
 void nes_apu_step ()
 {
 	apucc ++;
+	int sample = (apucc << 1) % sample_rate == 0 ;
 
 	// clock pulse channels
 	channel_clock_timer (&pulse_1);
@@ -853,6 +858,9 @@ void nes_apu_step ()
 
 	// step frame counter
 	step_frame_counter ();
+
+	if (sample)
+		nes_apu_render();
 }
 
 /* mix will take output from all channels and return the resulting mix. */
@@ -870,8 +878,27 @@ static float mix ()
 	return pulse_out + tnd_out;
 }
 
+static size_t nsamples = 0;
+static float* samples = 0;
+
 float nes_apu_render ()
 {
+	float v = mix ();
 	// TODO there should be some high-pass and low-pass filtering
-	return mix ();
+
+	if (!samples)
+		samples = malloc (44100 * sizeof(float));
+
+	*(samples + nsamples) = v * 2.0 - 1.0;
+	nsamples ++;
+
+	return v;
+}
+
+void nes_audio_samples (float** smpls, size_t* size)
+{
+	*smpls = malloc (nsamples * sizeof (float));
+	memcpy (*smpls, samples, nsamples);
+	*size = nsamples;
+	nsamples = 0;
 }

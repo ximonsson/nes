@@ -8,6 +8,7 @@
 #define NES_H_
 
 #include <stdint.h>
+#include <stdlib.h>
 
 /**
  *  Keys on the NES controller.
@@ -78,5 +79,7 @@ void nes_load_save (const char *location) ;
  *  Get a pointer to a finished rendered frame by the NES.
  */
 const uint8_t* nes_screen_buffer () ;
+
+void nes_audio_samples (float** /* buf */, size_t* /* size */);
 
 #endif
