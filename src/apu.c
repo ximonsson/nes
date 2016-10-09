@@ -2,6 +2,8 @@
 #include "nes/cpu.h"
 #include <string.h>
 #include <stdio.h>
+#include <math.h>
+#include <stdlib.h>
 
 /* apucc represents the APU clock cycles */
 static int apucc;
@@ -854,20 +856,79 @@ void nes_apu_reset ()
 
 #define DEFAULT_SAMPLE_RATE 44100
 
+/* sample_rate is the current sampling rate when rendering the audio. */
 static int sample_rate = NES_CPU_FREQ / DEFAULT_SAMPLE_RATE + 1;
+
+/* nsamples is the number samples in the render buffer. */
 static size_t nsamples = 0;
+
+/* samples points to the rendered samples */
 static float* samples = 0;
+
+/* struct high_pass_filter is a first order high pass filter. */
+struct filter
+{
+	float prev_y;
+	float prev_x;
+	float alpha;
+};
+
+/* high_pass_filter_init initializes the high pass filter with the supplied cut off frequency */
+static void high_pass_filter_init (struct filter* filter, int cutoff)
+{
+	filter->prev_y = 0.0;
+	filter->prev_x = 0.0;
+	float rc = sample_rate / (2.0 * M_PI * cutoff);
+	filter->alpha = rc / (rc + 1.0);
+}
+
+/* high_pass_filter_pass outputs next value from x. */
+static float high_pass_filter_pass (struct filter* filter, float x)
+{
+	float y = filter->alpha * (filter->prev_y + x + filter->prev_x);
+	filter->prev_y = y;
+	filter->prev_x = x;
+	return y;
+}
+
+/* low_pass_filter_init initializes the low pass filter the given cut off frequency. */
+static void low_pass_filter_init (struct filter* filter, int cutoff)
+{
+	filter->prev_y = 0.0;
+	filter->prev_x = 0.0;
+	float rc = sample_rate / (2.0 * M_PI * cutoff);
+	filter->alpha = 1.0 / (rc + 1.0);
+}
+
+/* low_pass_filter_pass passes the next value based on input x. */
+static float low_pass_filter_pass (struct filter* filter, float x)
+{
+	float y = filter->prev_y + filter->alpha * (x - filter->prev_y);
+	filter->prev_y = y;
+	filter->prev_x = x;
+	return y;
+}
+
+/* the three filters that are used when rendering */
+static struct filter filter_1;
+static struct filter filter_2;
+static struct filter filter_3;
+
 
 void nes_audio_set_sample_rate (int rate)
 {
 	sample_rate = NES_CPU_FREQ / rate + 1;
+	if (samples) free (samples);
 	samples = malloc (rate * sizeof (float));
+	// reinitialize filters
+	high_pass_filter_init (&filter_1, 90);
+	high_pass_filter_init (&filter_2, 440);
+	low_pass_filter_init (&filter_3, 14000);
 }
 
 void nes_apu_step ()
 {
 	apucc ++;
-	int sample = (apucc << 1) % sample_rate == 0 ;
 
 	// clock pulse channels
 	channel_clock_timer (&pulse_1);
@@ -886,12 +947,12 @@ void nes_apu_step ()
 	// step frame counter
 	step_frame_counter ();
 
-	if (sample)
+	if ((apucc << 1) % sample_rate == 0)
 		nes_apu_render();
 }
 
 /* mix will take output from all channels and return the resulting mix. */
-static float mix ()
+static inline float mix ()
 {
 	uint8_t p1 = channel_output (&pulse_1);
 	uint8_t p2 = channel_output (&pulse_2);
@@ -904,16 +965,21 @@ static float mix ()
 	float tnd_out = 0.00851 * tr + 0.00494 * n + 0.00335 * d;
 	float output = pulse_out + tnd_out;
 
-	//printf ("[ x%.2X ] ", STATUS);
-	//printf ("P1: %.2d P2: %.2d TR: %.2d No: %.2d DMC: %.2d => %.4f\n", p1, p2, tr, n, d, output);
 	return output;
 }
 
+
 float nes_apu_render ()
 {
+	// get value from mixer
 	float v = mix ();
-	// TODO there should be some high-pass and low-pass filtering
 
+	// apply filtering
+	v = high_pass_filter_pass (&filter_1, v);
+	v = high_pass_filter_pass (&filter_2, v);
+	v = low_pass_filter_pass (&filter_3, v);
+
+	// change domain to [-1;1]
 	*(samples + nsamples) = v * 2.0 - 1.0;
 	nsamples ++;
 

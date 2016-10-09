@@ -265,7 +265,7 @@ static void audio_init (int rate)
 // play audio samples
 static int audio_play ()
 {
-	int err;
+	int err = 0;
 	size_t size;
 	nes_audio_samples (audio_samples_buffer, &size);
 	if (pa_simple_write (audioconn, audio_samples_buffer, size, &err) < 0)
@@ -347,6 +347,7 @@ static void handle_events ()
 	}
 }
 
+#define SAMPLE_RATE 44100
 
 int main (int argc, char** argv)
 {
@@ -354,8 +355,8 @@ int main (int argc, char** argv)
 	parse_arguments (argv);
 	init_screen (256 * 2.5, 240 * 2.5);
 	init_opengl ();
-	audio_init (44100);
-	nes_audio_set_sample_rate (44100);
+	audio_init (SAMPLE_RATE);
+	nes_audio_set_sample_rate (SAMPLE_RATE);
 
 	if (nes_start (argv[1]) != 0)
 	{
