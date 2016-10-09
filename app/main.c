@@ -10,6 +10,7 @@
 #include <string.h>
 #include <GLES2/gl2.h>
 #include <pulse/simple.h>
+#include <pulse/error.h>
 
 
 #define VERTEX_SHADER_FILE          "app/shaders/vertex.glsl"
@@ -240,31 +241,44 @@ void parse_arguments (char **args)
 
 // connection to Pulse Audio server
 static pa_simple* audioconn;
+static float* audio_samples_buffer;
 
 // initialize audio connection
 static void audio_init (int rate)
 {
 	pa_sample_spec ss;
-	ss.format = PA_SAMPLE_FLOAT32NE;
-	ss.channels = 2;
+	ss.format = PA_SAMPLE_FLOAT32BE;
+	ss.channels = 1;
 	ss.rate = rate;
 
-	audioconn = pa_simple_new (NULL, "NES", PA_STREAM_PLAYBACK, NULL, "Audio", &ss, NULL, NULL, NULL);
+	audio_samples_buffer = malloc (rate * sizeof (float));
+
+	int error;
+	audioconn = pa_simple_new (NULL, "NES", PA_STREAM_PLAYBACK, NULL, "Audio", &ss, NULL, NULL, &error);
+	if (!audioconn)
+	{
+		fprintf (stderr, "error pa_simple_new: %s\n", pa_strerror (error));
+		exit(1);
+	}
 }
 
 // play audio samples
 static int audio_play ()
 {
 	int err;
-	float* buf; size_t size;
-	nes_audio_samples (&buf, &size);
-	pa_simple_write (audioconn, buf, size * sizeof (float), &err);
+	size_t size;
+	nes_audio_samples (audio_samples_buffer, &size);
+	if (pa_simple_write (audioconn, audio_samples_buffer, size, &err) < 0)
+		fprintf (stderr, "pa_simple_write: %s\n", pa_strerror (err));
 	return err;
 }
 
 // deinitialize audio
 static void audio_quit ()
 {
+	int err;
+	if (pa_simple_flush (audioconn, &err) < 0)
+		fprintf (stderr, "pa_simple_flush: %s\n", pa_strerror (err));
 	pa_simple_free (audioconn);
 }
 
@@ -341,6 +355,7 @@ int main (int argc, char** argv)
 	init_screen (256 * 2.5, 240 * 2.5);
 	init_opengl ();
 	audio_init (44100);
+	nes_audio_set_sample_rate (44100);
 
 	if (nes_start (argv[1]) != 0)
 	{

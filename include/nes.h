@@ -80,6 +80,14 @@ void nes_load_save (const char *location) ;
  */
 const uint8_t* nes_screen_buffer () ;
 
-void nes_audio_samples (float** /* buf */, size_t* /* size */);
+/**
+ * nes_audio_set_sample_rate sets the desired sample rate for audio playback */
+void nes_audio_set_sample_rate (int /* rate */) ;
+
+/**
+ * nes_audio_samples fills buf with samples and sets size to the size in bytes
+ * of the samples.
+ */
+void nes_audio_samples (float* /* buf */, size_t* /* size */) ;
 
 #endif

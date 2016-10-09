@@ -10,6 +10,9 @@ static int apucc;
 static uint8_t* registers;
 static uint8_t* frame_counter;
 
+#define STATUS registers[0x15]
+#define FRAMECOUNTER registers[0x17]
+
 /* length_counter_table contains lookup values for length counters */
 static uint8_t length_counter_table[32] =
 {
@@ -21,18 +24,18 @@ static uint8_t length_counter_table[32] =
 struct envelope
 {
 	uint8_t* reg;
+	uint8_t  decay;
 	int      divider;
-	int      start;
-	uint8_t  decay_level_counter;
+	int      start; // start flag
 };
 
 /* envelop_init initialize the envelope with reg as pointer to it's register */
 static void envelope_init (struct envelope* env, uint8_t* reg)
 {
-	env->reg                 = reg;
-	env->divider             = 0;
-	env->start               = 0;
-	env->decay_level_counter = 0;
+	env->reg     = reg;
+	env->divider = 0;
+	env->start   = 0;
+	env->decay   = 0;
 }
 
 /* envelope_clock clocks the supplied envelope linked to a channel */
@@ -45,10 +48,10 @@ static void envelope_clock (struct envelope* env)
 			// load V into divider
 			env->divider = (*env->reg) & 0xF;
 			// clock or loop decay level counter
-			if (env->decay_level_counter)
-				env->decay_level_counter --;
+			if (env->decay)
+				env->decay --;
 			else if ((*env->reg) & 0x20) // loop flag is set
-				env->decay_level_counter = 15;
+				env->decay = 15;
 		}
 		else
 			env->divider --;
@@ -56,7 +59,7 @@ static void envelope_clock (struct envelope* env)
 	else // start flag set
 	{
 		env->start = 0;
-		env->decay_level_counter = 15;
+		env->decay = 15;
 		env->divider = (*env->reg) & 0xF;
 	}
 }
@@ -72,29 +75,28 @@ static uint8_t envelope_volume (struct envelope* env)
 		return (*env->reg) & 0xF;
 	}
 	else
-		return env->decay_level_counter;
+		return env->decay;
 }
 
 /* APU channel */
 struct channel
 {
 	uint8_t  length_counter;
-	uint8_t* reg;
+	uint8_t  number;
+	uint16_t timer;
 	int      sweep;
 	int      reload_sweep;
 	int      sequencer;
-	uint16_t timer;
+	uint8_t* reg;
 	struct   envelope env;
 };
 
 /* clock APU channel's length counter */
-static void clock_channel_length_counter (struct channel* ch)
+static void channel_clock_length_counter (struct channel* ch)
 {
-	int halt = (*ch->reg) & 0x20;
+	int halt = (ch->reg[0] & 0x20) == 0x20;
 	if (!halt && ch->length_counter)
-	{
 		ch->length_counter --;
-	}
 }
 
 /* channel_envelope_write writes to a channel envelope register */
@@ -116,6 +118,7 @@ static void channel_timer_low_write (struct channel* ch, uint8_t v)
 /* channel_reload_len_counter writes to a channels length counter / timer high register */
 static void channel_reload_len_counter (struct channel* ch, uint8_t v)
 {
+	// printf ("reload pulse channel length counter\n");
 	ch->length_counter = length_counter_table[v >> 3]; // reload length counter
 	ch->env.start = 1; // restart the envelope
 	ch->sequencer = 0;
@@ -138,11 +141,15 @@ static void channel_adjust_period (struct channel* ch)
 	// shift the timer and change sign if needed
 	delta >>= shift;
 	if (ch->reg[1] & 8)
+	{
 		delta = -delta;
-		// TODO if pulse channel 1 there is to be -1
+		// if pulse channel 1 there is to be -1
+		if (ch->number == 1)
+			delta --;
+	}
 	timer += delta;
 
-	// update the registers with the new timer
+	// update the registers with the new period
 	ch->reg[2]  = timer;
 	ch->reg[3] |= (timer >> 8) & 7;
 }
@@ -163,13 +170,16 @@ static void channel_clock_sweep (struct channel* ch)
 		ch->sweep = period;
 		ch->reload_sweep = 0;
 	}
-	else if (ch->sweep)
-		ch->sweep --;
-	else if (sweep_enabled)
+	else
 	{
-		ch->sweep = period;
-		// adjust period
-		channel_adjust_period (ch);
+		if (ch->sweep)
+			ch->sweep --;
+		else if (sweep_enabled)
+		{
+			ch->sweep = period;
+			// adjust period
+			channel_adjust_period (ch);
+		}
 	}
 }
 
@@ -205,7 +215,9 @@ static uint8_t channel_output (struct channel* ch)
 	uint16_t timer = ch->reg[3] & 7;
 	timer |= (timer << 8) | ch->reg[2];
 
-	if (duty_sequence[duty][ch->sequencer] == 0)
+	if (~STATUS & (1 << (ch->number - 1)))
+		return 0;
+	else if (duty_sequence[duty][ch->sequencer] == 0)
 		return 0;
 	else if (ch->length_counter == 0)
 		return 0;
@@ -217,7 +229,7 @@ static uint8_t channel_output (struct channel* ch)
 }
 
 /* channel_init initializes a new channel from a memory location to the first (of four) register */
-static void channel_init (struct channel* ch, uint8_t* reg)
+static void channel_init (struct channel* ch, uint8_t* reg, uint8_t number)
 {
 	ch->reg = reg;
 	ch->timer = 0;
@@ -225,6 +237,7 @@ static void channel_init (struct channel* ch, uint8_t* reg)
 	ch->length_counter = 0;
 	ch->reload_sweep = 0;
 	ch->sweep = 0;
+	ch->number = number;
 	envelope_init (&ch->env, reg);
 }
 
@@ -306,7 +319,9 @@ static void triangle_reload_length_counter (struct triangle* tr, uint8_t v)
 /* triangle_output will output the next value in the triangle channel's sequence */
 static uint8_t triangle_output (struct triangle* tr)
 {
-	return triangle_sequence[tr->sequencer];
+	if (STATUS & 0x04)
+		return triangle_sequence[tr->sequencer];
+	return 0;
 }
 
 /* noise_periods periods to load into the noise channel */
@@ -316,11 +331,11 @@ static uint16_t noise_periods[16] = {
 
 /* noise APU */
 struct noise {
+	uint16_t shift_register;
+	uint16_t length_counter;
+	uint8_t* reg;
+	int      timer;
 	struct envelope env;
-	uint16_t        shift_register;
-	uint16_t        length_counter;
-	uint8_t*        reg;
-	int             timer;
 };
 
 /* noise_clock_lfsr clocks the noise channel's shift register */
@@ -348,7 +363,9 @@ static void noise_clock_timer (struct noise* noise)
 /* noise_output returns the noise channel's envelope volume */
 static uint8_t noise_output (struct noise* noise)
 {
-	if (noise->shift_register & 1)
+	if (~STATUS & 0x80)
+		return 0;
+	else if (noise->shift_register & 1)
 		return 0;
 	else if (noise->length_counter == 0)
 		return 0;
@@ -443,6 +460,7 @@ static void dmc_init (struct dmc* dmc, uint8_t* reg)
 /* dmc_reader_reload reloads sample address and length */
 static void dmc_reader_reload (struct dmc* dmc)
 {
+	printf ("restarting DMC\n");
 	dmc->reader.address = dmc->reg[2];
 	dmc->reader.address = 0xC000 | (dmc->reader.address << 6);
 	dmc->reader.remaining = dmc->reg[3];
@@ -454,6 +472,7 @@ static void dmc_clock_reader (struct dmc* dmc)
 {
 	nes_cpu_stall (4);
 	// read from memory
+	printf ("reading from $%.4X for sample\n", dmc->reader.address);
 	dmc->buffer = nes_cpu_read_ram (dmc->reader.address);
 
 	// increment address
@@ -470,6 +489,7 @@ static void dmc_clock_reader (struct dmc* dmc)
  * dmc_reload_output reloads the DMC's output unit's cycle by emptying the readers buffer,
  * if not empty, else it will silence the unit.
  * The reader is looped if needed else it outputs an IRQ signal if the flag is set.
+ * Should only be called at the end of a cycle.
  */
 static void dmc_reload_output (struct dmc* dmc)
 {
@@ -499,6 +519,7 @@ static void dmc_reload_output (struct dmc* dmc)
 	}
 }
 
+// dmc_clock_output clocks the DMC's output unit */
 static void dmc_clock_output (struct dmc* dmc)
 {
 	if (!dmc->output.silent)
@@ -535,6 +556,8 @@ static void dmc_clock (struct dmc* dmc)
 /* dmc_output outputs sample from the DMC */
 static uint8_t dmc_output (struct dmc* dmc)
 {
+	if (~STATUS & 0x10)
+		return 0;
 	// return the output units level
 	return dmc->output.level;
 }
@@ -554,6 +577,7 @@ static void clock_envelopes ()
 	envelope_clock (&pulse_1.env);
 	envelope_clock (&pulse_2.env);
 	envelope_clock (&noise.env);
+	triangle_clock_linear_counter (&triangle);
 }
 
 /* clock_sweeps clocks the pulse channel's sweep units */
@@ -566,8 +590,8 @@ static void clock_sweeps ()
 /* clock_length_counters clocks all audio channel's length counters */
 static void clock_length_counters ()
 {
-	clock_channel_length_counter  (&pulse_1);
-	clock_channel_length_counter  (&pulse_2);
+	channel_clock_length_counter  (&pulse_1);
+	channel_clock_length_counter  (&pulse_2);
 	noise_clock_length_counter    (&noise);
 	triangle_clock_length_counter (&triangle);
 }
@@ -575,7 +599,6 @@ static void clock_length_counters ()
 static void clock_all ()
 {
 	clock_envelopes ();
-	triangle_clock_linear_counter (&triangle);
 	clock_length_counters ();
 	clock_sweeps ();
 }
@@ -588,10 +611,7 @@ static void step_frame_counter ()
 		if (apucc == 7456)
 			clock_all ();
 		else
-		{
 			clock_envelopes ();
-			triangle_clock_linear_counter (&triangle);
-		}
 	}
 	if ((*frame_counter) & 0x80)
 	{
@@ -699,6 +719,7 @@ static void dmc_direct_load (uint8_t v)
 /* write to status register */
 static void status_write (uint8_t value)
 {
+	//printf ("writing to STATUS x%.2X\n", value);
 	if (~value & 0x10)
 	{
 		// silence DMC
@@ -730,12 +751,7 @@ static void frame_counter_write (uint8_t value)
 {
 	apucc = 0;
 	if (value & 0x80)
-	{
-		clock_envelopes ();
-		triangle_clock_linear_counter (&triangle);
-		clock_length_counters ();
-		clock_sweeps ();
-	}
+		clock_all ();
 }
 
 /* End APU Register Writers ----------------------------------------------------------------------------------------- */
@@ -771,7 +787,7 @@ static uint8_t status_read ()
 	              (pulse_2_enabled  << 1)  |
 	              pulse_1_enabled;
 
-	registers[0x17] &= 0xD0; // clear frame interruot flag
+	FRAMECOUNTER &= 0xD0; // clear frame interrupt flag
 	return ret;
 }
 
@@ -797,8 +813,8 @@ void nes_apu_reset ()
 	frame_counter = registers + 0x17; // frame counter register
 
 	// initialize audio channels
-	channel_init (&pulse_1, registers);
-	channel_init (&pulse_2, registers + 4);
+	channel_init (&pulse_1, registers, 1);
+	channel_init (&pulse_2, registers + 4, 2);
 	triangle_init (&triangle, registers + 8);
 	noise_init (&noise, registers + 12);
 	dmc_init (&dmc, registers + 16);
@@ -825,6 +841,7 @@ void nes_apu_reset ()
 	// noise registers
 	writers[0x0F] = &noise_len_cnt_write;
 
+	// dmc registers
 	writers[0x11] = &dmc_direct_load;
 
 	writers[0x15] = &status_write;
@@ -835,7 +852,17 @@ void nes_apu_reset ()
  	status_write (0); // silence all channels
 }
 
-static int sample_rate = NES_CPU_FREQ / 44100 + 1;
+#define DEFAULT_SAMPLE_RATE 44100
+
+static int sample_rate = NES_CPU_FREQ / DEFAULT_SAMPLE_RATE + 1;
+static size_t nsamples = 0;
+static float* samples = 0;
+
+void nes_audio_set_sample_rate (int rate)
+{
+	sample_rate = NES_CPU_FREQ / rate + 1;
+	samples = malloc (rate * sizeof (float));
+}
 
 void nes_apu_step ()
 {
@@ -875,19 +902,17 @@ static float mix ()
 	// we are using the less precise linear approximation
 	float pulse_out = 0.00752 * (p1 + p2);
 	float tnd_out = 0.00851 * tr + 0.00494 * n + 0.00335 * d;
-	return pulse_out + tnd_out;
-}
+	float output = pulse_out + tnd_out;
 
-static size_t nsamples = 0;
-static float* samples = 0;
+	//printf ("[ x%.2X ] ", STATUS);
+	//printf ("P1: %.2d P2: %.2d TR: %.2d No: %.2d DMC: %.2d => %.4f\n", p1, p2, tr, n, d, output);
+	return output;
+}
 
 float nes_apu_render ()
 {
 	float v = mix ();
 	// TODO there should be some high-pass and low-pass filtering
-
-	if (!samples)
-		samples = malloc (44100 * sizeof(float));
 
 	*(samples + nsamples) = v * 2.0 - 1.0;
 	nsamples ++;
@@ -895,10 +920,9 @@ float nes_apu_render ()
 	return v;
 }
 
-void nes_audio_samples (float** smpls, size_t* size)
+void nes_audio_samples (float* smpls, size_t* size)
 {
-	*smpls = malloc (nsamples * sizeof (float));
-	memcpy (*smpls, samples, nsamples);
-	*size = nsamples;
+	*size = nsamples * sizeof (float);
+	memcpy (smpls, samples, *size);
 	nsamples = 0;
 }
