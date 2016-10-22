@@ -12,7 +12,7 @@ static int apucc;
 static uint8_t* registers;
 static uint8_t* frame_counter;
 
-#define STATUS registers[0x15]
+#define STATUS       registers[0x15]
 #define FRAMECOUNTER registers[0x17]
 
 /* length_counter_table contains lookup values for length counters */
@@ -43,7 +43,13 @@ static void envelope_init (struct envelope* env, uint8_t* reg)
 /* envelope_clock clocks the supplied envelope linked to a channel */
 static void envelope_clock (struct envelope* env)
 {
-	if (env->start == 0)
+	if (env->start) // start flag set
+	{
+		env->start = 0;
+		env->decay = 15;
+		env->divider = (*env->reg) & 0xF;
+	}
+	else
 	{
 		if (env->divider == 0)
 		{
@@ -58,12 +64,6 @@ static void envelope_clock (struct envelope* env)
 		else
 			env->divider --;
 	}
-	else // start flag set
-	{
-		env->start = 0;
-		env->decay = 15;
-		env->divider = (*env->reg) & 0xF;
-	}
 }
 
 /**
@@ -72,10 +72,8 @@ static void envelope_clock (struct envelope* env)
  */
 static uint8_t envelope_volume (struct envelope* env)
 {
-	if ((*env->reg) & 0x10) {
-		// constant volume
+	if ((*env->reg) & 0x10) // constant volume
 		return (*env->reg) & 0xF;
-	}
 	else
 		return env->decay;
 }
@@ -93,6 +91,26 @@ struct channel
 	struct   envelope env;
 };
 
+/* channel_init initializes a new channel from a memory location to the first (of four) register */
+static void channel_init (struct channel* ch, uint8_t* reg, uint8_t number)
+{
+	ch->reg = reg;
+	ch->timer = 0;
+	ch->sequencer = 0;
+	ch->length_counter = 0;
+	ch->reload_sweep = 0;
+	ch->sweep = 0;
+	ch->number = number;
+	envelope_init (&ch->env, reg);
+}
+
+/* channel_reload_timer reloads the pulse channel's timer */
+static void channel_reload_timer (struct channel* ch)
+{
+	ch->timer = ch->reg[2] & 7;
+	ch->timer = (ch->timer << 8) | ch->reg[3];
+}
+
 /* clock APU channel's length counter */
 static void channel_clock_length_counter (struct channel* ch)
 {
@@ -106,21 +124,20 @@ static void channel_envelope_write (struct channel* ch, uint8_t v)
 {
 	// restart the envelope
 	ch->env.start = 1;
-	ch->sequencer = 0;
+	// ch->sequencer = 0;
 }
 
 /* channel_timer_low_write writes to the low bits of the channel's timer */
 static void channel_timer_low_write (struct channel* ch, uint8_t v)
 {
 	// restart the envelope
-	ch->env.start = 1;
-	ch->sequencer = 0;
+	//ch->env.start = 1;
+	//ch->sequencer = 0;
 }
 
 /* channel_reload_len_counter writes to a channels length counter / timer high register */
 static void channel_reload_len_counter (struct channel* ch, uint8_t v)
 {
-	// printf ("reload pulse channel length counter\n");
 	ch->length_counter = length_counter_table[v >> 3]; // reload length counter
 	ch->env.start = 1; // restart the envelope
 	ch->sequencer = 0;
@@ -138,7 +155,7 @@ static void channel_adjust_period (struct channel* ch)
 	uint8_t shift = ch->reg[1] & 7;
 	uint16_t timer = ch->reg[3] & 7;
 	timer = (timer << 8) | ch->reg[2];
-	uint16_t delta = timer;
+	int16_t delta = timer;
 
 	// shift the timer and change sign if needed
 	delta >>= shift;
@@ -188,11 +205,9 @@ static void channel_clock_sweep (struct channel* ch)
 /* channel_clock_timer clocks the channel's timer and if needed sequencer */
 static void channel_clock_timer (struct channel* ch)
 {
-	if (ch->timer == 0)
+	if (ch->timer == 0) // reload timer
 	{
-		// reload timer
-		ch->timer = ch->reg[2] & 7;
-		ch->timer = (ch->timer << 8) | ch->reg[3];
+		channel_reload_timer (ch);
 		// step duty waveform sequence
 		ch->sequencer ++;
 		ch->sequencer &= 7; // loop sequencer
@@ -230,26 +245,6 @@ static uint8_t channel_output (struct channel* ch)
 	return envelope_volume (&ch->env);
 }
 
-/* channel_init initializes a new channel from a memory location to the first (of four) register */
-static void channel_init (struct channel* ch, uint8_t* reg, uint8_t number)
-{
-	ch->reg = reg;
-	ch->timer = 0;
-	ch->sequencer = 0;
-	ch->length_counter = 0;
-	ch->reload_sweep = 0;
-	ch->sweep = 0;
-	ch->number = number;
-	envelope_init (&ch->env, reg);
-}
-
-/* triangle_sequence is the 32 step sequence played by the triangle channel */
-static uint8_t triangle_sequence[32] =
-{
-	15, 14, 13, 12, 11, 10,  9,  8,  7,  6,  5,  4,  3,  2,  1,  0,
-	 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15
-};
-
 /* triangle channel */
 struct triangle
 {
@@ -272,21 +267,28 @@ static void triangle_init (struct triangle* tr, uint8_t* reg)
 	tr->sequencer = 0;
 }
 
-/* triangle_step_timer will step the provided triangle channel's timer */
-static void triangle_step_timer (struct triangle* tr)
+/* triangle_reload_timer reloads the timer for the triangle channel. */
+static void triangle_reload_timer (struct triangle* tr)
 {
-	tr->timer --;
+	tr->timer = tr->reg[3] & 7;
+	tr->timer = tr->timer << 8 | tr->reg[2];
+}
+
+/* triangle_clock_timer will step the provided triangle channel's timer */
+static void triangle_clock_timer (struct triangle* tr)
+{
 	if (tr->timer == 0)
 	{
+		triangle_reload_timer (tr);
 		// clock sequencer and reload timer
-		tr->timer = tr->reg[3] & 7;
-		tr->timer = tr->timer << 8 | tr->reg[2];
 		if (tr->linear_counter && tr->length_counter)
 		{
 			tr->sequencer ++;
 			tr->sequencer &= 0x1F;
 		}
 	}
+	else
+		tr->timer --;
 }
 
 /* triangle_clock_linear_counter clocks the triangle channel's linear counter */
@@ -318,12 +320,23 @@ static void triangle_reload_length_counter (struct triangle* tr, uint8_t v)
 	tr->linear_counter_reload = 1;
 }
 
+/* triangle_sequence is the 32 step sequence played by the triangle channel */
+static uint8_t triangle_sequence[32] =
+{
+	15, 14, 13, 12, 11, 10,  9,  8,  7,  6,  5,  4,  3,  2,  1,  0,
+	 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15
+};
+
 /* triangle_output will output the next value in the triangle channel's sequence */
 static uint8_t triangle_output (struct triangle* tr)
 {
-	if (STATUS & 0x04)
-		return triangle_sequence[tr->sequencer];
-	return 0;
+	if (~STATUS & 0x04)
+		return 0;
+	else if (tr->length_counter == 0)
+		return 0;
+	else if (tr->linear_counter == 0)
+		return 0;
+	return triangle_sequence[tr->sequencer];
 }
 
 /* noise_periods periods to load into the noise channel */
@@ -340,7 +353,7 @@ struct noise {
 	struct envelope env;
 };
 
-/* noise_clock_lfsr clocks the noise channel's shift register */
+/* noise_clock_lfsr clocks the noise channel's left shift register (LFSR) */
 static void noise_clock_lfsr (struct noise* noise)
 {
 	uint16_t sh = noise->shift_register;
@@ -384,7 +397,7 @@ static void noise_clock_length_counter (struct noise* noise)
 	}
 }
 
-/* channel_reload_len_counter writes to a channels length counter / timer high register */
+/* noise_reload_len_counter writes to a channels length counter / timer high register */
 static void noise_reload_len_counter (struct noise* noise, uint8_t v)
 {
 	noise->length_counter = length_counter_table[v >> 3]; // reload length counter
@@ -605,37 +618,61 @@ static void clock_all ()
 	clock_sweeps ();
 }
 
-/* step_frame_counter steps the frame counter/sequencer */
+static void inline step_frame_counter_4 ()
+{
+	int frame = apucc / 3728; // TODO not super correct
+	switch (frame)
+	{
+		case 0:
+		case 2:
+			clock_envelopes();
+			break;
+		case 1:
+		case 3:
+			clock_all();
+			break;
+	}
+	if (frame == 3)
+	{
+		apucc = 0;
+		//if (~FRAME_COUNTER & 0x40)
+			//nes_cpu_signal (IRQ);
+	}
+}
+
+static void inline step_frame_counter_5 ()
+{
+	int frame = apucc / 3728; // TODO not super correct
+	switch (frame)
+	{
+		case 0:
+		case 2:
+			clock_all();
+			break;
+		case 1:
+		case 3:
+			clock_envelopes();
+			break;
+	}
+	if (frame == 4)
+		apucc = 0;
+}
+
+/**
+ * step_frame_counter steps the frame counter/sequencer accordingly
+ * to the mode that is set in register $4017.
+ * mode 0:    mode 1:       function
+ * ---------  -----------  -----------------------------
+ *   - - - f    - - - - -    IRQ (if bit 6 is clear)
+ *   - l - l    l - l - -    Length counter and sweep
+ *   e e e e    e e e e -    Envelope and linear counter
+ */
 static void step_frame_counter ()
 {
-	if (apucc == 3728 || apucc == 7456 || apucc == 11185)
-	{
-		if (apucc == 7456)
-			clock_all ();
-		else
-			clock_envelopes ();
-	}
-	if ((*frame_counter) & 0x80)
-	{
-		// 5-step mode
-		if (apucc == 18640)
-		{
-			clock_all ();
-			apucc = 0;
-		}
-	}
+	if (FRAME_COUNTER & 0x80)
+		step_frame_counter_5 ();
 	else
-	{
-		// 4-step mode
-		if (apucc == 14914)
-		{
-			clock_all ();
-			apucc = 0;
-			// generate interrupt
-			if (~(*frame_counter) & 0x40)
-		    	nes_cpu_signal (IRQ);
-		}
-	}
+		step_frame_counter_4 ();
 }
 
 /* APU Register Writers --------------------------------------------------------------------------------------------- */
@@ -691,19 +728,21 @@ static void pulse2_len_cnt_write (uint8_t value)
 /* write to $4008 */
 static void triangle_lin_cnt_write (uint8_t value)
 {
-	triangle.linear_counter_reload = 1;
+	// triangle.linear_counter_reload = 1;
 }
 
 /* write to $400A */
 static void triangle_timer_low_write (uint8_t value)
 {
-	triangle.linear_counter_reload = 1;
+	// triangle.linear_counter_reload = 1;
+	// triangle_reload_timer (&triangle);
 }
 
 /* write to $400B */
 static void triangle_timer_high_write (uint8_t value)
 {
 	triangle_reload_length_counter (&triangle, value);
+	// triangle_reload_timer (&triangle);
 }
 
 /* write $400F */
@@ -751,7 +790,7 @@ static void status_write (uint8_t value)
 /* write to frame counter register */
 static void frame_counter_write (uint8_t value)
 {
-	apucc = 0;
+	// apucc = 0;
 	if (value & 0x80)
 		clock_all ();
 }
@@ -857,7 +896,7 @@ void nes_apu_reset ()
 #define DEFAULT_SAMPLE_RATE 44100
 
 /* sample_rate is the current sampling rate when rendering the audio. */
-static int sample_rate = NES_CPU_FREQ / DEFAULT_SAMPLE_RATE + 1;
+static int sample_rate = NES_CPU_FREQ / DEFAULT_SAMPLE_RATE;
 
 /* nsamples is the number samples in the render buffer. */
 static size_t nsamples = 0;
@@ -883,7 +922,7 @@ static void high_pass_filter_init (struct filter* filter, int cutoff)
 }
 
 /* high_pass_filter_pass outputs next value from x. */
-static float high_pass_filter_pass (struct filter* filter, float x)
+float high_pass_filter_pass (struct filter* filter, float x)
 {
 	float y = filter->alpha * (filter->prev_y + x + filter->prev_x);
 	filter->prev_y = y;
@@ -901,7 +940,7 @@ static void low_pass_filter_init (struct filter* filter, int cutoff)
 }
 
 /* low_pass_filter_pass passes the next value based on input x. */
-static float low_pass_filter_pass (struct filter* filter, float x)
+float low_pass_filter_pass (struct filter* filter, float x)
 {
 	float y = filter->prev_y + filter->alpha * (x - filter->prev_y);
 	filter->prev_y = y;
@@ -917,7 +956,7 @@ static struct filter filter_3;
 
 void nes_audio_set_sample_rate (int rate)
 {
-	sample_rate = NES_CPU_FREQ / rate + 1;
+	sample_rate = NES_CPU_FREQ / rate;
 	if (samples) free (samples);
 	samples = malloc (rate * sizeof (float));
 	// reinitialize filters
@@ -938,17 +977,18 @@ void nes_apu_step ()
 	noise_clock_timer (&noise);
 
 	// clock triangle twice as it runs @ CPU speed
-	triangle_step_timer (&triangle);
-	triangle_step_timer (&triangle);
+	triangle_clock_timer (&triangle);
+	triangle_clock_timer (&triangle);
 
 	// clock dmc timer
 	dmc_clock (&dmc);
 
 	// step frame counter
-	step_frame_counter ();
+	if (apucc % 3728 == 0) // TODO not super correct
+		step_frame_counter ();
 
 	if ((apucc << 1) % sample_rate == 0)
-		nes_apu_render();
+		nes_apu_render ();
 }
 
 /* mix will take output from all channels and return the resulting mix. */
@@ -960,10 +1000,15 @@ static inline float mix ()
 	uint8_t n  = noise_output (&noise);
 	uint8_t d  = dmc_output (&dmc);
 
+	n = 0; d = 0; p2 = 0; p1 = 0; // DEBUG
+
 	// we are using the less precise linear approximation
 	float pulse_out = 0.00752 * (p1 + p2);
 	float tnd_out = 0.00851 * tr + 0.00494 * n + 0.00335 * d;
 	float output = pulse_out + tnd_out;
+
+	printf ("P1: %4d P2: %4d Tr: %4d No: %4d Dm: %4d => %4.2f\n",
+			p1, p2, tr, n, d, output);
 
 	return output;
 }
@@ -975,9 +1020,9 @@ float nes_apu_render ()
 	float v = mix ();
 
 	// apply filtering
-	v = high_pass_filter_pass (&filter_1, v);
-	v = high_pass_filter_pass (&filter_2, v);
-	v = low_pass_filter_pass (&filter_3, v);
+ 	// v = high_pass_filter_pass (&filter_1, v);
+	// v = high_pass_filter_pass (&filter_2, v);
+	// v = low_pass_filter_pass (&filter_3, v);
 
 	// change domain to [-1;1]
 	*(samples + nsamples) = v * 2.0 - 1.0;
