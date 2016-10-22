@@ -10,7 +10,6 @@ static int apucc;
 
 /* APU registers */
 static uint8_t* registers;
-static uint8_t* frame_counter;
 
 #define STATUS       registers[0x15]
 #define FRAMECOUNTER registers[0x17]
@@ -135,7 +134,10 @@ static void channel_timer_low_write (struct channel* ch, uint8_t v)
 	//ch->sequencer = 0;
 }
 
-/* channel_reload_len_counter writes to a channels length counter / timer high register */
+/**
+ * channel_reload_len_counter writes to a channels length counter / timer high register,
+ * and restarts it's envelope and sequencer.
+ */
 static void channel_reload_len_counter (struct channel* ch, uint8_t v)
 {
 	ch->length_counter = length_counter_table[v >> 3]; // reload length counter
@@ -143,7 +145,7 @@ static void channel_reload_len_counter (struct channel* ch, uint8_t v)
 	ch->sequencer = 0;
 }
 
-/* channel_sweep_write writes to the channel's sweep unit */
+/* channel_sweep_write writes to the channel's sweep unit, and reloads it. */
 static void channel_sweep_write (struct channel* ch, uint8_t v)
 {
 	ch->reload_sweep = 1; // make the sweep unit reload
@@ -155,10 +157,9 @@ static void channel_adjust_period (struct channel* ch)
 	uint8_t shift = ch->reg[1] & 7;
 	uint16_t timer = ch->reg[3] & 7;
 	timer = (timer << 8) | ch->reg[2];
-	int16_t delta = timer;
+	uint16_t delta = timer >> shift;
 
 	// shift the timer and change sign if needed
-	delta >>= shift;
 	if (ch->reg[1] & 8)
 	{
 		delta = -delta;
@@ -635,7 +636,7 @@ static void inline step_frame_counter_4 ()
 	if (frame == 3)
 	{
 		apucc = 0;
-		//if (~FRAME_COUNTER & 0x40)
+		//if (~FRAMECOUNTER & 0x40)
 			//nes_cpu_signal (IRQ);
 	}
 }
@@ -669,7 +670,7 @@ static void inline step_frame_counter_5 ()
  */
 static void step_frame_counter ()
 {
-	if (FRAME_COUNTER & 0x80)
+	if (FRAMECOUNTER & 0x80)
 		step_frame_counter_5 ();
 	else
 		step_frame_counter_4 ();
@@ -760,29 +761,23 @@ static void dmc_direct_load (uint8_t v)
 /* write to status register */
 static void status_write (uint8_t value)
 {
-	//printf ("writing to STATUS x%.2X\n", value);
-	if (~value & 0x10)
-	{
-		// silence DMC
+	if (~value & 0x10) // silence DMC
 		dmc.reader.remaining = 0;
-	}
-	else if (dmc.reader.remaining == 0)
-	{
-		// restart DMC
+	else if (dmc.reader.remaining == 0) // restart DMC
 		dmc_reader_reload (&dmc);
-	}
 
+	// silence noise
 	if (~value & 0x08)
-		noise.length_counter = 0; // silence noise
-
+		noise.length_counter = 0;
+	// silence triangle
 	if (~value & 0x04)
-		triangle.length_counter = 0; // silence triangle
-
+		triangle.length_counter = 0;
+	// silence pulse 2
 	if (~value & 0x02)
-		pulse_2.length_counter = 0; // silence pulse 2
-
+		pulse_2.length_counter = 0;
+	// silence pulse 1
 	if (~value & 0x01)
-		pulse_1.length_counter = 0; // silence pulse 1
+		pulse_1.length_counter = 0;
 
 	registers[0x10] &= 0x7F; // clear the DMC interrupt flag
 }
@@ -851,14 +846,12 @@ void nes_apu_reset ()
 	// get memory location of APU registers
 	__memory__ ((void**) &registers, 0x4000);
 
-	frame_counter = registers + 0x17; // frame counter register
-
 	// initialize audio channels
-	channel_init (&pulse_1, registers, 1);
-	channel_init (&pulse_2, registers + 4, 2);
-	triangle_init (&triangle, registers + 8);
-	noise_init (&noise, registers + 12);
-	dmc_init (&dmc, registers + 16);
+	channel_init  (&pulse_1,  registers,     1);
+	channel_init  (&pulse_2,  registers +  4, 2);
+	triangle_init (&triangle, registers +  8);
+	noise_init    (&noise,    registers + 12);
+	dmc_init      (&dmc,      registers + 16);
 
 	readers[0x15] = &status_read;
 
@@ -1000,7 +993,7 @@ static inline float mix ()
 	uint8_t n  = noise_output (&noise);
 	uint8_t d  = dmc_output (&dmc);
 
-	n = 0; d = 0; p2 = 0; p1 = 0; // DEBUG
+	n = 0; d = 0; p2 = 0; // p1 = 0; // DEBUG
 
 	// we are using the less precise linear approximation
 	float pulse_out = 0.00752 * (p1 + p2);
@@ -1020,9 +1013,9 @@ float nes_apu_render ()
 	float v = mix ();
 
 	// apply filtering
- 	// v = high_pass_filter_pass (&filter_1, v);
-	// v = high_pass_filter_pass (&filter_2, v);
-	// v = low_pass_filter_pass (&filter_3, v);
+ 	//v = high_pass_filter_pass (&filter_1, v);
+	//v = high_pass_filter_pass (&filter_2, v);
+	//v = low_pass_filter_pass (&filter_3, v);
 
 	// change domain to [-1;1]
 	*(samples + nsamples) = v * 2.0 - 1.0;
