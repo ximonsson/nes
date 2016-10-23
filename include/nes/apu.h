@@ -16,22 +16,6 @@
 #define NES_APU_STATUS        0x4015
 #define NES_APU_FRAME_COUNTER 0x4017
 
-/**
- * nes_apu_register enumerates the different registers on the APU
- */
-typedef enum nes_apu_register
-{
-	// ...
-	PULSE_1,
-	PULSE_2,
-	TRIANGLE,
-	NOISE,
-	DMC,
-	STATUS,
-	FRAME_COUNTER,
-}
-nes_apu_register;
-
 
 /**
  *  nes_apu_init initializes the APU.
