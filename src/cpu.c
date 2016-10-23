@@ -441,7 +441,6 @@ static int on_apu_register_write (uint16_t address, uint8_t value)
 	if ((address >= NES_APU_PULSE_1 && address <= NES_APU_STATUS) || address == NES_APU_FRAME_COUNTER)
 	{
 		nes_apu_register_write (address, value);
-		return 1;
 	}
 	return 0;
 }
