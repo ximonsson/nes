@@ -84,15 +84,15 @@ static uint8_t envelope_volume (struct envelope* env)
 /* APU Pulse channel */
 struct pulse
 {
-	uint8_t  length_counter;
-	uint8_t  number;
+	uint8_t  length_counter; // length counter value
+	uint8_t  number;         // pulse channel index, 1 or 2
 	uint16_t timer;
-	int      sweep;
-	int      reload_sweep;
+	int      sweep;          // sweep divider
+	int      reload_sweep;   // reload sweep flag
 	int      sequencer;
-	int      overflow;     // overflow from the sweep unit
-	uint8_t* reg;          // base register address
-	struct   envelope env; // envelope unit
+	int      overflow;       // overflow from the sweep unit
+	uint8_t* reg;            // base register address
+	struct   envelope env;   // envelope unit
 };
 
 /* pulse_init initializes a new channel from a memory location to the first (of four) register */
@@ -149,7 +149,7 @@ static void pulse_reload_len_counter (struct pulse* ch, uint8_t v)
 	ch->sequencer = 0;
 }
 
-/* pulse_sweep_write writes to the channel's sweep unit, and reloads it. */
+/* pulse_sweep_write handles writes to the pulse channel's sweep unit. */
 static void pulse_sweep_write (struct pulse* ch, uint8_t v)
 {
 	ch->reload_sweep = 1; // make the sweep unit reload
@@ -478,7 +478,6 @@ static void dmc_init (struct dmc* dmc, uint8_t* reg)
 /* dmc_reader_reload reloads sample address and length */
 static void dmc_reader_reload (struct dmc* dmc)
 {
-	printf ("restarting DMC\n");
 	dmc->reader.address = dmc->reg[2];
 	dmc->reader.address = 0xC000 | (dmc->reader.address << 6);
 	dmc->reader.remaining = dmc->reg[3];
@@ -583,13 +582,14 @@ static uint8_t dmc_output (struct dmc* dmc)
 /**
  *  APU Channels
  */
-struct pulse pulse_1;
-struct pulse pulse_2;
-struct triangle triangle;
-struct noise noise;
-struct dmc dmc;
+static struct pulse pulse_1;
+static struct pulse pulse_2;
+static struct triangle triangle;
+static struct noise noise;
+static struct dmc dmc;
 
-/* clock_envelopes clocks all the audio channel's envelope units */
+/* clock_envelopes clocks all the audio channel's envelope units as well
+ * as the triangle channel's linear counter. */
 static void clock_envelopes ()
 {
 	envelope_clock (&pulse_1.env);
@@ -617,8 +617,8 @@ static void clock_length_counters ()
 static void clock_all ()
 {
 	clock_envelopes ();
-	clock_length_counters ();
 	clock_sweeps ();
+	clock_length_counters ();
 }
 
 // step_frame_counter_4 steps the frame counter in 4 step mode.
@@ -971,7 +971,7 @@ void nes_audio_set_sample_rate (int rate)
 	low_pass_filter_init  (&filter_3, 14000);
 }
 
-#define FRAME_COUNTER_RATE 240
+#define FRAME_COUNTER_RATE 240.0
 static const float frame_rate = NES_CPU_FREQ / FRAME_COUNTER_RATE;
 
 void nes_apu_step ()
@@ -1012,7 +1012,7 @@ static inline float mix ()
 	uint8_t n  = noise_output (&noise);
 	uint8_t d  = dmc_output (&dmc);
 
-	n = 0; d = 0; // p2 = 0; p1 = 0; // DEBUG
+	n = 0; d = 0; tr = 0; // p2 = 0; p1 = 0; // DEBUG
 
 	// we are using the less precise linear approximation
 	float pulse_out = 0.00752 * (p1 + p2);
