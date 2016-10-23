@@ -81,8 +81,8 @@ static uint8_t envelope_volume (struct envelope* env)
 		return env->decay;
 }
 
-/* APU channel */
-struct channel
+/* APU Pulse channel */
+struct pulse
 {
 	uint8_t  length_counter;
 	uint8_t  number;
@@ -95,8 +95,8 @@ struct channel
 	struct   envelope env; // envelope unit
 };
 
-/* channel_init initializes a new channel from a memory location to the first (of four) register */
-static void channel_init (struct channel* ch, uint8_t* reg, uint8_t number)
+/* pulse_init initializes a new channel from a memory location to the first (of four) register */
+static void pulse_init (struct pulse* ch, uint8_t* reg, uint8_t number)
 {
 	ch->reg            = reg;
 	ch->timer          = 0;
@@ -109,59 +109,59 @@ static void channel_init (struct channel* ch, uint8_t* reg, uint8_t number)
 	envelope_init (&ch->env, reg);
 }
 
-/* channel_period returns the channel's period */
-static uint16_t inline channel_period (struct channel* ch)
+/* pulse_period returns the channel's period length. */
+static uint16_t inline pulse_period (struct pulse* ch)
 {
 	uint16_t period = ch->reg[3] & 7;
 	         period = (period << 8) | ch->reg[2];
 	return period;
 }
 
-/* clock APU channel's length counter */
-static void channel_clock_length_counter (struct channel* ch)
+/* clock pulse channel's length counter. */
+static void pulse_clock_length_counter (struct pulse* ch)
 {
 	int halt = (ch->reg[0] & 0x20) == 0x20;
 	if (!halt && ch->length_counter)
 		ch->length_counter --;
 }
 
-/* channel_envelope_write writes to a channel envelope register */
-static void channel_envelope_write (struct channel* ch, uint8_t v)
+/* pulse_envelope_write writes to a channel envelope register */
+static void pulse_envelope_write (struct pulse* ch, uint8_t v)
 {
 	// restart the envelope
 	ch->env.start = 1;
 }
 
-/* channel_timer_low_write writes to the low bits of the channel's timer */
-static void channel_timer_low_write (struct channel* ch, uint8_t v)
+/* pulse_timer_low_write writes to the low bits of the channel's timer */
+static void pulse_timer_low_write (struct pulse* ch, uint8_t v)
 {
 	// nada
 }
 
 /**
- * channel_reload_len_counter writes to a channels length counter / timer high register,
+ * pulse_reload_len_counter writes to a channels length counter / timer high register,
  * and restarts it's envelope and sequencer.
  */
-static void channel_reload_len_counter (struct channel* ch, uint8_t v)
+static void pulse_reload_len_counter (struct pulse* ch, uint8_t v)
 {
 	ch->length_counter = length_counter_table[v >> 3]; // reload length counter
 	ch->env.start = 1; // restart the envelope
 	ch->sequencer = 0;
 }
 
-/* channel_sweep_write writes to the channel's sweep unit, and reloads it. */
-static void channel_sweep_write (struct channel* ch, uint8_t v)
+/* pulse_sweep_write writes to the channel's sweep unit, and reloads it. */
+static void pulse_sweep_write (struct pulse* ch, uint8_t v)
 {
 	ch->reload_sweep = 1; // make the sweep unit reload
 }
 
-/* channel_adjust_period adjusts the channel's period after sweeping */
-static void channel_adjust_period (struct channel* ch)
+/* pulse_adjust_period adjusts the channel's period after sweeping */
+static void pulse_adjust_period (struct pulse* ch)
 {
 	uint8_t shift = ch->reg[1] & 7;
 	if (shift == 0)
 		return;
-	uint16_t period = channel_period (ch);
+	uint16_t period = pulse_period (ch);
 	// shift period to get adjustement and switch sign if needed
 	uint16_t delta = period >> shift;
 	if (ch->reg[1] & 8) // negate
@@ -182,8 +182,8 @@ static void channel_adjust_period (struct channel* ch)
 	ch->reg[3] = (ch->reg[3] & 0xF8) | ((period >> 8) & 7);
 }
 
-/* channel_clock_sweep clock the channel's sweep unit */
-static void channel_clock_sweep (struct channel* ch)
+/* pulse_clock_sweep clock the channel's sweep unit */
+static void pulse_clock_sweep (struct pulse* ch)
 {
 	int enabled = (ch->reg[1] & 0x80) != 0;
 	uint8_t period = ((ch->reg[1] >> 4) & 7) + 1;
@@ -193,7 +193,7 @@ static void channel_clock_sweep (struct channel* ch)
 		ch->sweep = period;
 		ch->reload_sweep = 0;
 		if (ch->sweep == 0 && enabled) // adjust period
-			channel_adjust_period (ch);
+			pulse_adjust_period (ch);
 	}
 	else
 	{
@@ -202,18 +202,18 @@ static void channel_clock_sweep (struct channel* ch)
 		else if (enabled)
 		{
 			ch->sweep = period;
-			channel_adjust_period (ch); // adjust period
+			pulse_adjust_period (ch); // adjust period
 		}
 	}
 }
 
-/* channel_clock_timer clocks the channel's timer. */
-static void channel_clock_timer (struct channel* ch)
+/* pulse_clock_timer clocks the channel's timer. */
+static void pulse_clock_timer (struct pulse* ch)
 {
 	if (ch->timer == 0)
 	{
 		// reload timer and step duty waveform sequence
-		ch->timer = channel_period (ch);
+		ch->timer = pulse_period (ch);
 		ch->sequencer = (ch->sequencer + 1) & 7;
 	}
 	else // decrement timer
@@ -229,11 +229,11 @@ static uint8_t duty_sequence[4][8] =
 	{ 1, 0, 0, 1, 1, 1, 1, 1 }
 };
 
-/* channel_output gives the next output from the channel */
-static uint8_t channel_output (struct channel* ch)
+/* pulse_output gives the next output from the channel */
+static uint8_t pulse_output (struct pulse* ch)
 {
 	uint8_t  duty   = ch->reg[0] >> 6;
-	uint16_t period = channel_period (ch);
+	uint16_t period = pulse_period (ch);
 
 	if (~STATUS & ch->number)
 		return 0;
@@ -583,8 +583,8 @@ static uint8_t dmc_output (struct dmc* dmc)
 /**
  *  APU Channels
  */
-struct channel pulse_1;
-struct channel pulse_2;
+struct pulse pulse_1;
+struct pulse pulse_2;
 struct triangle triangle;
 struct noise noise;
 struct dmc dmc;
@@ -601,15 +601,15 @@ static void clock_envelopes ()
 /* clock_sweeps clocks the pulse channel's sweep units */
 static void clock_sweeps ()
 {
-	channel_clock_sweep (&pulse_1);
-	channel_clock_sweep (&pulse_2);
+	pulse_clock_sweep (&pulse_1);
+	pulse_clock_sweep (&pulse_2);
 }
 
 /* clock_length_counters clocks all audio channel's length counters */
 static void clock_length_counters ()
 {
-	channel_clock_length_counter  (&pulse_1);
-	channel_clock_length_counter  (&pulse_2);
+	pulse_clock_length_counter    (&pulse_1);
+	pulse_clock_length_counter    (&pulse_2);
 	noise_clock_length_counter    (&noise);
 	triangle_clock_length_counter (&triangle);
 }
@@ -687,49 +687,49 @@ static void step_frame_counter ()
 /* write to $4000 */
 static void pulse1_envelope_write (uint8_t value)
 {
-	channel_envelope_write (&pulse_1, value);
+	pulse_envelope_write (&pulse_1, value);
 }
 
 /* write to $4001 */
 static void pulse1_sweep_write (uint8_t value)
 {
-	channel_sweep_write (&pulse_1, value);
+	pulse_sweep_write (&pulse_1, value);
 }
 
 /* write to $4002 */
 static void pulse1_timer_low_write (uint8_t value)
 {
-	channel_timer_low_write (&pulse_1, value);
+	pulse_timer_low_write (&pulse_1, value);
 }
 
 /* write to $4003 */
 static void pulse1_len_cnt_write (uint8_t value)
 {
-	channel_reload_len_counter (&pulse_1, value);
+	pulse_reload_len_counter (&pulse_1, value);
 }
 
 /* write to $4004 */
 static void pulse2_envelope_write (uint8_t value)
 {
-	channel_envelope_write (&pulse_2, value);
+	pulse_envelope_write (&pulse_2, value);
 }
 
 /* write to $4005 */
 static void pulse2_sweep_write (uint8_t value)
 {
-	channel_sweep_write (&pulse_2, value);
+	pulse_sweep_write (&pulse_2, value);
 }
 
 /* write to $4006 */
 static void pulse2_timer_low_write (uint8_t value)
 {
-	channel_timer_low_write (&pulse_2, value);
+	pulse_timer_low_write (&pulse_2, value);
 }
 
 /* write to $4007 */
 static void pulse2_len_cnt_write (uint8_t value)
 {
-	channel_reload_len_counter (&pulse_2, value);
+	pulse_reload_len_counter (&pulse_2, value);
 }
 
 /* write to $4008 */
@@ -850,8 +850,8 @@ void nes_apu_reset ()
 	__memory__ ((void**) &registers, 0x4000);
 
 	// initialize audio channels
-	channel_init  (&pulse_1,  registers,      1);
-	channel_init  (&pulse_2,  registers +  4, 2);
+	pulse_init    (&pulse_1,  registers,      1);
+	pulse_init    (&pulse_2,  registers +  4, 2);
 	triangle_init (&triangle, registers +  8);
 	noise_init    (&noise,    registers + 12);
 	dmc_init      (&dmc,      registers + 16);
@@ -985,8 +985,8 @@ void nes_apu_step ()
 	if ((apucc & 1) == 0)
 	{
 		// clock pulse channels
-		channel_clock_timer (&pulse_1);
-		channel_clock_timer (&pulse_2);
+		pulse_clock_timer (&pulse_1);
+		pulse_clock_timer (&pulse_2);
 		// clock noise channel
 		noise_clock_timer (&noise);
 		// clock dmc timer
@@ -1006,8 +1006,8 @@ void nes_apu_step ()
 /* mix will take output from all channels and return the resulting mix. */
 static inline float mix ()
 {
-	uint8_t p1 = channel_output (&pulse_1);
-	uint8_t p2 = channel_output (&pulse_2);
+	uint8_t p1 = pulse_output (&pulse_1);
+	uint8_t p2 = pulse_output (&pulse_2);
 	uint8_t tr = triangle_output (&triangle);
 	uint8_t n  = noise_output (&noise);
 	uint8_t d  = dmc_output (&dmc);
