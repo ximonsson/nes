@@ -27,10 +27,10 @@ static uint8_t length_counter_table[32] =
 /* envelope linked to a channel */
 struct envelope
 {
-	uint8_t* reg;
-	uint8_t  decay;
-	int      divider;
-	int      start; // start flag
+	uint8_t* reg;     // register with flags
+	uint8_t  decay;   // output volume when not constant flag is set
+	int      divider; // period
+	int      start;   // start flag
 };
 
 /* envelop_init initialize the envelope with reg as pointer to it's register */
@@ -45,22 +45,23 @@ static void envelope_init (struct envelope* env, uint8_t* reg)
 /* envelope_clock clocks the supplied envelope linked to a channel */
 static void envelope_clock (struct envelope* env)
 {
+	uint8_t r = *env->reg; // register value
 	if (env->start) // start flag set
 	{
-		env->start = 0;
-		env->decay = 15;
-		env->divider = (*env->reg) & 0xF;
+		env->start   = 0;
+		env->decay   = 15;
+		env->divider = r & 0xF;
 	}
 	else
 	{
 		if (env->divider == 0)
 		{
 			// load V into divider
-			env->divider = (*env->reg) & 0xF;
+			env->divider = r & 0xF;
 			// clock or loop decay level counter
 			if (env->decay)
 				env->decay --;
-			else if ((*env->reg) & 0x20) // loop flag is set
+			else if (r & 0x20) // loop flag is set
 				env->decay = 15;
 		}
 		else
@@ -89,8 +90,9 @@ struct channel
 	int      sweep;
 	int      reload_sweep;
 	int      sequencer;
-	uint8_t* reg;
-	struct   envelope env;
+	int      overflow;     // overflow from the sweep unit
+	uint8_t* reg;          // base register address
+	struct   envelope env; // envelope unit
 };
 
 /* channel_init initializes a new channel from a memory location to the first (of four) register */
@@ -102,15 +104,17 @@ static void channel_init (struct channel* ch, uint8_t* reg, uint8_t number)
 	ch->length_counter = 0;
 	ch->reload_sweep   = 0;
 	ch->sweep          = 0;
+	ch->overflow       = 0;
 	ch->number         = number;
 	envelope_init (&ch->env, reg);
 }
 
-/* channel_reload_timer reloads the pulse channel's timer */
-static void inline channel_reload_timer (struct channel* ch)
+/* channel_period returns the channel's period */
+static uint16_t inline channel_period (struct channel* ch)
 {
-	ch->timer = ch->reg[3] & 7;
-	ch->timer = (ch->timer << 8) | ch->reg[2];
+	uint16_t period = ch->reg[3] & 7;
+	         period = (period << 8) | ch->reg[2];
+	return period;
 }
 
 /* clock APU channel's length counter */
@@ -131,9 +135,7 @@ static void channel_envelope_write (struct channel* ch, uint8_t v)
 /* channel_timer_low_write writes to the low bits of the channel's timer */
 static void channel_timer_low_write (struct channel* ch, uint8_t v)
 {
-	// restart the envelope
-	//ch->env.start = 1;
-	//ch->sequencer = 0;
+	// nada
 }
 
 /**
@@ -156,44 +158,48 @@ static void channel_sweep_write (struct channel* ch, uint8_t v)
 /* channel_adjust_period adjusts the channel's period after sweeping */
 static void channel_adjust_period (struct channel* ch)
 {
-	uint8_t  shift = ch->reg[1] & 7;
-	uint16_t timer = ch->reg[3] & 7;
-	         timer = (timer << 8) | ch->reg[2];
-
-	// shift timer to get adjustement and switch sign if needed
-	uint16_t delta = timer >> shift;
-	if (ch->reg[1] & 8)
+	uint8_t shift = ch->reg[1] & 7;
+	if (shift == 0)
+		return;
+	uint16_t period = channel_period (ch);
+	// shift period to get adjustement and switch sign if needed
+	uint16_t delta = period >> shift;
+	if (ch->reg[1] & 8) // negate
 	{
 		delta = -delta;
 		// if pulse channel 1 there is to be -1
 		if (ch->number == 1)
 			delta --;
 	}
-	timer += delta;
+	period += delta;
+	// set period overflow flag
+	ch->overflow = period > 0x7FF;
+	if (ch->overflow)
+		return;
 
 	// update the registers with the new period
-	ch->reg[2] = timer;
-	ch->reg[3] = (ch->reg[3] & 0xF8) | ((timer >> 8) & 7);
+	ch->reg[2] = period;
+	ch->reg[3] = (ch->reg[3] & 0xF8) | ((period >> 8) & 7);
 }
 
 /* channel_clock_sweep clock the channel's sweep unit */
 static void channel_clock_sweep (struct channel* ch)
 {
-	int sweep_enabled = (ch->reg[1] & 0x80) != 0;
+	int enabled = (ch->reg[1] & 0x80) != 0;
 	uint8_t period = ((ch->reg[1] >> 4) & 7) + 1;
 	if (ch->reload_sweep)
 	{
 		// reload sweep with period and clear the reload flag
 		ch->sweep = period;
 		ch->reload_sweep = 0;
-		if (ch->sweep == 0 && sweep_enabled) // adjust period
+		if (ch->sweep == 0 && enabled) // adjust period
 			channel_adjust_period (ch);
 	}
 	else
 	{
 		if (ch->sweep)
 			ch->sweep --;
-		else if (sweep_enabled)
+		else if (enabled)
 		{
 			ch->sweep = period;
 			channel_adjust_period (ch); // adjust period
@@ -201,13 +207,13 @@ static void channel_clock_sweep (struct channel* ch)
 	}
 }
 
-/* channel_clock_timer clocks the channel's timer and if needed sequencer */
+/* channel_clock_timer clocks the channel's timer. */
 static void channel_clock_timer (struct channel* ch)
 {
-	if (ch->timer == 0) // reload timer
+	if (ch->timer == 0)
 	{
-		channel_reload_timer (ch);
-		// step duty waveform sequence
+		// reload timer and step duty waveform sequence
+		ch->timer = channel_period (ch);
 		ch->sequencer = (ch->sequencer + 1) & 7;
 	}
 	else // decrement timer
@@ -226,17 +232,16 @@ static uint8_t duty_sequence[4][8] =
 /* channel_output gives the next output from the channel */
 static uint8_t channel_output (struct channel* ch)
 {
-	uint8_t duty = ch->reg[0] >> 6;
-	uint16_t timer = ch->reg[3] & 7;
-	timer = (timer << 8) | ch->reg[2];
+	uint8_t  duty   = ch->reg[0] >> 6;
+	uint16_t period = channel_period (ch);
 
-	if (~STATUS & (1 << (ch->number - 1)))
+	if (~STATUS & ch->number)
 		return 0;
 	else if (duty_sequence[duty][ch->sequencer] == 0)
 		return 0;
 	else if (ch->length_counter == 0)
 		return 0;
-	else if (timer < 8 || timer > 0x7FF)
+	else if (period < 8 || ch->overflow)
 		return 0;
 
 	// return envelope volume
@@ -632,8 +637,8 @@ static void inline step_frame_counter_4 ()
 	}
 	if (frame == 3)
 	{
-		//if (~FRAMECOUNTER & 0x40)
-			//nes_cpu_signal (IRQ);
+		if (~FRAMECOUNTER & 0x40) // frame IRQ inhibit flag clear
+			nes_cpu_signal (IRQ);
 	}
 }
 
@@ -730,21 +735,19 @@ static void pulse2_len_cnt_write (uint8_t value)
 /* write to $4008 */
 static void triangle_lin_cnt_write (uint8_t value)
 {
-	// triangle.linear_counter_reload = 1;
+	// nada
 }
 
 /* write to $400A */
 static void triangle_timer_low_write (uint8_t value)
 {
-	// triangle.linear_counter_reload = 1;
-	// triangle_reload_timer (&triangle);
+	// nada
 }
 
 /* write to $400B */
 static void triangle_timer_high_write (uint8_t value)
 {
 	triangle_reload_length_counter (&triangle, value);
-	// triangle_reload_timer (&triangle);
 }
 
 /* write $400F */
@@ -786,7 +789,6 @@ static void status_write (uint8_t value)
 /* write to frame counter register */
 static void frame_counter_write (uint8_t value)
 {
-	// apucc = 0;
 	if (value & 0x80)
 		clock_all ();
 }
@@ -802,7 +804,6 @@ void nes_apu_register_write (uint16_t address, uint8_t value)
 	writer w;
 	if ((w = *writers[address & 0x3FFF]) != NULL)
 		w (value);
- 	registers[address & 0x3FFF] = value;
 }
 
 
@@ -816,7 +817,8 @@ static uint8_t status_read ()
 	uint8_t triangle_enabled = triangle.length_counter > 0;
 	uint8_t dmc_enabled      = dmc.reader.remaining    > 0;
 
-	uint8_t ret = (registers[0x10] & 0x80) |
+	uint8_t ret = 0                        |
+	              (registers[0x10] & 0x80) |
 	              (registers[0x17] & 0x40) |
 	              (dmc_enabled      << 4)  |
 	              (noise_enabled    << 3)  |
@@ -957,16 +959,16 @@ static struct filter filter_3;
 void nes_audio_set_sample_rate (int rate)
 {
 	audio_sample_rate = rate;
-	sample_freq = NES_CPU_FREQ / audio_sample_rate;
+	sample_freq = NES_CPU_FREQ / (float) audio_sample_rate;
 
 	// allocate buffer for samples
 	if (samples) free (samples);
 	samples = malloc (rate * sizeof (float));
 
 	// reinitialize filters
-	high_pass_filter_init (&filter_1, 90);
-	high_pass_filter_init (&filter_2, 440);
-	low_pass_filter_init (&filter_3, 14000);
+	high_pass_filter_init (&filter_1,    90);
+	high_pass_filter_init (&filter_2,   440);
+	low_pass_filter_init  (&filter_3, 14000);
 }
 
 #define FRAME_COUNTER_RATE 240
@@ -974,7 +976,12 @@ static const float frame_rate = NES_CPU_FREQ / FRAME_COUNTER_RATE;
 
 void nes_apu_step ()
 {
+	int f1 = apucc / frame_rate;
+	int s1 = apucc / sample_freq;
 	apucc ++;
+	int f2 = apucc / frame_rate;
+	int s2 = apucc / sample_freq;
+
 	if ((apucc & 1) == 0)
 	{
 		// clock pulse channels
@@ -988,17 +995,12 @@ void nes_apu_step ()
 	// clock triangle
 	triangle_clock_timer (&triangle);
 
-	int f1, f2;
-	f2 = (apucc - 1) / frame_rate;
-	f1 = apucc / frame_rate;
 	// step frame counter
 	if (f1 != f2)
-		step_frame_counter();
-
-	f2 = (apucc - 1) / sample_freq;
-	f1 = apucc / sample_freq;
-	if (f1 != f2) // render
-		nes_apu_render();
+		step_frame_counter ();
+	// render
+	if (s1 != s2)
+		nes_apu_render ();
 }
 
 /* mix will take output from all channels and return the resulting mix. */
@@ -1010,15 +1012,15 @@ static inline float mix ()
 	uint8_t n  = noise_output (&noise);
 	uint8_t d  = dmc_output (&dmc);
 
-	n = 0; d = 0; p2 = 0; //p1 = 0; // DEBUG
+	n = 0; d = 0; // p2 = 0; p1 = 0; // DEBUG
 
 	// we are using the less precise linear approximation
 	float pulse_out = 0.00752 * (p1 + p2);
 	float tnd_out = 0.00851 * tr + 0.00494 * n + 0.00335 * d;
 	float output = pulse_out + tnd_out;
 
-	printf ("P1: %4d P2: %4d Tr: %4d No: %4d Dm: %4d => %4.2f\n",
-			p1, p2, tr, n, d, output);
+	//printf ("P1: %4d P2: %4d Tr: %4d No: %4d Dm: %4d => %4.2f\n",
+			//p1, p2, tr, n, d, output);
 
 	return output;
 }
