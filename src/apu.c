@@ -48,9 +48,9 @@ static void envelope_clock (struct envelope* env)
 	uint8_t r = *env->reg; // register value
 	if (env->start) // start flag set
 	{
-		env->start   = 0;
 		env->decay   = 15;
 		env->divider = r & 0xF;
+		env->start   = 0;
 	}
 	else
 	{
@@ -138,15 +138,12 @@ static void pulse_timer_low_write (struct pulse* ch, uint8_t v)
 	// nada
 }
 
-/**
- * pulse_reload_len_counter writes to a channels length counter / timer high register,
- * and restarts it's envelope and sequencer.
- */
+/* pulse_reload_len_counter handles writes to a channels length counter / timer high register. */
 static void pulse_reload_len_counter (struct pulse* ch, uint8_t v)
 {
 	ch->length_counter = length_counter_table[v >> 3]; // reload length counter
 	ch->env.start = 1; // restart the envelope
-	ch->sequencer = 0;
+	ch->sequencer = 0; // restart sequencer
 }
 
 /* pulse_sweep_write handles writes to the pulse channel's sweep unit. */
@@ -588,7 +585,7 @@ static struct triangle triangle;
 static struct noise noise;
 static struct dmc dmc;
 
-/* clock_envelopes clocks all the audio channel's envelope units as well
+/* clock_envelopes clocks all the audio channels' envelope units as well
  * as the triangle channel's linear counter. */
 static void clock_envelopes ()
 {
@@ -598,7 +595,7 @@ static void clock_envelopes ()
 	triangle_clock_linear_counter (&triangle);
 }
 
-/* clock_sweeps clocks the pulse channel's sweep units */
+/* clock_sweeps clocks the pulse channels' sweep units */
 static void clock_sweeps ()
 {
 	pulse_clock_sweep (&pulse_1);
