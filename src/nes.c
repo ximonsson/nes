@@ -189,11 +189,12 @@ void nes_step_frame ()
 			nes_ppu_step ();
 
 		// render audio
-		for (int i = 0; i < (cc + apucc_backlog) / 2; i ++)
+		for (int i = 0; i < cc; i ++)
 			nes_apu_step ();
 
 		ppucc += cc * 3;
-		apucc_backlog = (cc + apucc_backlog) & 1;
+		//apucc_backlog = (cc + apucc_backlog) & 1;
+
 		// TODO emulate correct timings
 	}
 	ppucc %= PPUCC_PER_SCANLINE * SCANLINES_PER_FRAME;
