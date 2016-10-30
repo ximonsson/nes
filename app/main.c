@@ -13,8 +13,8 @@
 #include <pulse/error.h>
 
 
-#define VERTEX_SHADER_FILE          "app/shaders/vertex.glsl"
-#define FRAGMENT_SHADER_FILE        "app/shaders/fragment.glsl"
+#define VERTEX_SHADER_FILE "app/shaders/vertex.glsl"
+#define FRAGMENT_SHADER_FILE "app/shaders/fragment.glsl"
 
 static int 			  width,
 					  height;
@@ -231,14 +231,6 @@ void draw ()
 	SDL_GL_SwapWindow (sdl_window);
 }
 
-/**
-*  Parse input arguments and do required setup.
-*/
-void parse_arguments (char **args)
-{
-
-}
-
 // connection to Pulse Audio server
 static pa_simple* audioconn;
 static float* audio_samples_buffer;
@@ -247,7 +239,7 @@ static float* audio_samples_buffer;
 static void audio_init (int rate)
 {
 	pa_sample_spec ss;
-	ss.format = PA_SAMPLE_FLOAT32BE;
+	ss.format = PA_SAMPLE_FLOAT32NE;
 	ss.channels = 1;
 	ss.rate = rate;
 
@@ -352,7 +344,6 @@ static void handle_events ()
 int main (int argc, char** argv)
 {
 	// init
-	parse_arguments (argv);
 	init_screen (256 * 2.5, 240 * 2.5);
 	init_opengl ();
 	audio_init (SAMPLE_RATE);
