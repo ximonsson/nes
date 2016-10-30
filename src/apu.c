@@ -232,9 +232,7 @@ static uint8_t pulse_output (struct pulse* ch)
 	uint8_t  duty   = ch->reg[0] >> 6;
 	uint16_t period = pulse_period (ch);
 
-	if (~STATUS & ch->number)
-		return 0;
-	else if (duty_sequence[duty][ch->sequencer] == 0)
+	if (duty_sequence[duty][ch->sequencer] == 0)
 		return 0;
 	else if (ch->length_counter == 0)
 		return 0;
@@ -330,9 +328,7 @@ static uint8_t triangle_sequence[32] =
 /* triangle_output will output the next value in the triangle channel's sequence */
 static uint8_t triangle_output (struct triangle* tr)
 {
-	if (~STATUS & 0x04)
-		return 0;
-	else if (tr->length_counter == 0)
+	if (tr->length_counter == 0)
 		return 0;
 	else if (tr->linear_counter == 0)
 		return 0;
@@ -340,7 +336,8 @@ static uint8_t triangle_output (struct triangle* tr)
 }
 
 /* noise_periods periods to load into the noise channel */
-static uint16_t noise_periods[16] = {
+static uint16_t noise_periods[16] =
+{
 	4, 8, 16, 32, 64, 96, 128, 160, 202, 254, 380, 508, 762, 1016, 2034, 4068
 };
 
@@ -446,7 +443,8 @@ static void dmc_output_unit_init (struct dmc_output_unit* o)
 }
 
 /* dmc_rate_index contains rates for the DMC */
-static uint16_t dmc_rate_index[16] = {
+static uint16_t dmc_rate_index[16] =
+{
 	428, 380, 340, 320, 286, 254, 226, 214, 190, 160, 142, 128, 106,  84,  72,  54
 };
 
@@ -994,11 +992,10 @@ static void render ()
 	// get value from mixer
 	float s = mix ();
 	// apply filtering
- 	//s = high_pass_filter_pass (&filter_1, s);
-	//s = high_pass_filter_pass (&filter_2, s);
+ 	s = high_pass_filter_pass (&filter_1, s);
+	s = high_pass_filter_pass (&filter_2, s);
 	s = low_pass_filter_pass (&filter_3, s);
-	// change domain to [-1;1]
-	*(samples + nsamples) = s * 2.0 - 1.0;
+	*(samples + nsamples) = s;
 	nsamples ++;
 }
 
@@ -1014,11 +1011,11 @@ static const float frame_rate = NES_CPU_FREQ / FRAME_COUNTER_RATE;
 
 void nes_apu_step ()
 {
-	int f1 = ((float) apucc) / frame_rate;
-	int s1 = ((float) apucc) / sample_freq;
+	int f1 = apucc / frame_rate;
+	int s1 = apucc / sample_freq;
 	apucc ++;
-	int f2 = ((float) apucc) / frame_rate;
-	int s2 = ((float) apucc) / sample_freq;
+	int f2 = apucc / frame_rate;
+	int s2 = apucc / sample_freq;
 
 	if ((apucc & 1) == 0) // even cycle
 	{
