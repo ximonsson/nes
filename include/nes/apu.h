@@ -41,6 +41,6 @@ void nes_apu_step () ;
 /**
  *  nes_apu_render renders current sound data to buffer.
  */
-float nes_apu_render () ;
+//float nes_apu_render () ;
 
 #endif // NES_APU_H_

@@ -196,10 +196,10 @@ static void pulse_clock_sweep (struct pulse* ch)
 	{
 		if (ch->sweep)
 			ch->sweep --;
-		else if (enabled)
+		else if (enabled) // sweep == 0
 		{
-			ch->sweep = period;
 			pulse_adjust_period (ch); // adjust period
+			ch->sweep = period;
 		}
 	}
 }
@@ -486,7 +486,6 @@ static void dmc_clock_reader (struct dmc* dmc)
 {
 	nes_cpu_stall (4);
 	// read from memory
-	printf ("reading from $%.4X for sample\n", dmc->reader.address);
 	dmc->buffer = nes_cpu_read_ram (dmc->reader.address);
 
 	// increment address
@@ -968,18 +967,59 @@ void nes_audio_set_sample_rate (int rate)
 	low_pass_filter_init  (&filter_3, 14000);
 }
 
+/* mix will take output from all channels and return the resulting mix. */
+static inline float mix ()
+{
+	uint8_t p1 = pulse_output (&pulse_1);
+	uint8_t p2 = pulse_output (&pulse_2);
+	uint8_t tr = triangle_output (&triangle);
+	uint8_t n  = noise_output (&noise);
+	uint8_t d  = dmc_output (&dmc);
+
+	// we are using the less precise linear approximation
+	float pulse_out = 0.00752 * (p1 + p2);
+	float tnd_out = 0.00851 * tr + 0.00494 * n + 0.00335 * d;
+	float output = pulse_out + tnd_out;
+
+	return output;
+}
+
+/**
+ * render takes the current output of all channels, mixes them and sends them
+ * to a buffer of samples.
+ */
+static void render ()
+{
+	// get value from mixer
+	float s = mix ();
+	// apply filtering
+ 	// s = high_pass_filter_pass (&filter_1, s);
+	// s = high_pass_filter_pass (&filter_2, s);
+	// s = low_pass_filter_pass (&filter_3, s);
+	// change domain to [-1;1]
+	*(samples + nsamples) = s * 2.0 - 1.0;
+	nsamples ++;
+}
+
+void nes_audio_samples (float* smpls, size_t* size)
+{
+	*size = nsamples * sizeof (float);
+	memcpy (smpls, samples, *size);
+	nsamples = 0;
+}
+
 #define FRAME_COUNTER_RATE 240.0
 static const float frame_rate = NES_CPU_FREQ / FRAME_COUNTER_RATE;
 
 void nes_apu_step ()
 {
-	int f1 = apucc / frame_rate;
-	int s1 = apucc / sample_freq;
+	int f1 = ((float) apucc) / frame_rate;
+	int s1 = ((float) apucc) / sample_freq;
 	apucc ++;
-	int f2 = apucc / frame_rate;
-	int s2 = apucc / sample_freq;
+	int f2 = ((float) apucc) / frame_rate;
+	int s2 = ((float) apucc) / sample_freq;
 
-	if ((apucc & 1) == 0)
+	if ((apucc & 1) == 0) // even cycle
 	{
 		// clock pulse channels
 		pulse_clock_timer (&pulse_1);
@@ -997,52 +1037,6 @@ void nes_apu_step ()
 		step_frame_counter ();
 	// render
 	if (s1 != s2)
-		nes_apu_render ();
+		render ();
 }
 
-/* mix will take output from all channels and return the resulting mix. */
-static inline float mix ()
-{
-	uint8_t p1 = pulse_output (&pulse_1);
-	uint8_t p2 = pulse_output (&pulse_2);
-	uint8_t tr = triangle_output (&triangle);
-	uint8_t n  = noise_output (&noise);
-	uint8_t d  = dmc_output (&dmc);
-
-	n = 0; d = 0; tr = 0; // p2 = 0; p1 = 0; // DEBUG
-
-	// we are using the less precise linear approximation
-	float pulse_out = 0.00752 * (p1 + p2);
-	float tnd_out = 0.00851 * tr + 0.00494 * n + 0.00335 * d;
-	float output = pulse_out + tnd_out;
-
-	//printf ("P1: %4d P2: %4d Tr: %4d No: %4d Dm: %4d => %4.2f\n",
-			//p1, p2, tr, n, d, output);
-
-	return output;
-}
-
-
-float nes_apu_render ()
-{
-	// get value from mixer
-	float v = mix ();
-
-	// apply filtering
- 	//v = high_pass_filter_pass (&filter_1, v);
-	//v = high_pass_filter_pass (&filter_2, v);
-	//v = low_pass_filter_pass (&filter_3, v);
-
-	// change domain to [-1;1]
-	*(samples + nsamples) = v * 2.0 - 1.0;
-	nsamples ++;
-
-	return v;
-}
-
-void nes_audio_samples (float* smpls, size_t* size)
-{
-	*size = nsamples * sizeof (float);
-	memcpy (smpls, samples, *size);
-	nsamples = 0;
-}
