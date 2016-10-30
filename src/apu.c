@@ -910,19 +910,21 @@ struct filter
 	float alpha;
 };
 
+#define RC (audio_sample_rate / (2.0 * M_PI * cutoff))
+#define DT 1.0
+
 /* high_pass_filter_init initializes the high pass filter with the supplied cut off frequency */
 static void high_pass_filter_init (struct filter* filter, int cutoff)
 {
 	filter->prev_y = 0.0;
 	filter->prev_x = 0.0;
-	float rc = audio_sample_rate / (2.0 * M_PI * cutoff);
-	filter->alpha = rc / (rc + 1.0);
+	filter->alpha = RC / (RC + DT);
 }
 
 /* high_pass_filter_pass outputs next value from x. */
 float high_pass_filter_pass (struct filter* filter, float x)
 {
-	float y = filter->alpha * (filter->prev_y + x + filter->prev_x);
+	float y = filter->alpha * (filter->prev_y + x - filter->prev_x);
 	filter->prev_y = y;
 	filter->prev_x = x;
 	return y;
@@ -933,12 +935,11 @@ static void low_pass_filter_init (struct filter* filter, int cutoff)
 {
 	filter->prev_y = 0.0;
 	filter->prev_x = 0.0;
-	float rc = audio_sample_rate / (2.0 * M_PI * cutoff);
-	filter->alpha = 1.0 / (rc + 1.0);
+	filter->alpha = DT / (RC + DT);
 }
 
 /* low_pass_filter_pass passes the next value based on input x. */
-float low_pass_filter_pass (struct filter* filter, float x)
+static float low_pass_filter_pass (struct filter* filter, float x)
 {
 	float y = filter->prev_y + filter->alpha * (x - filter->prev_y);
 	filter->prev_y = y;
@@ -993,9 +994,9 @@ static void render ()
 	// get value from mixer
 	float s = mix ();
 	// apply filtering
- 	// s = high_pass_filter_pass (&filter_1, s);
-	// s = high_pass_filter_pass (&filter_2, s);
-	// s = low_pass_filter_pass (&filter_3, s);
+ 	//s = high_pass_filter_pass (&filter_1, s);
+	//s = high_pass_filter_pass (&filter_2, s);
+	s = low_pass_filter_pass (&filter_3, s);
 	// change domain to [-1;1]
 	*(samples + nsamples) = s * 2.0 - 1.0;
 	nsamples ++;
