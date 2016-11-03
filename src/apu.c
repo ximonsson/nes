@@ -350,14 +350,23 @@ struct noise {
 	struct envelope env;
 };
 
+/* new_noise_channel returns a new noise channel */
+static void noise_init (struct noise* noise, uint8_t* reg)
+{
+	noise->reg = reg;
+	noise->shift_register = 1;
+	noise->timer = 0;
+	envelope_init (&noise->env, reg);
+}
+
 /* noise_clock_lfsr clocks the noise channel's left shift register (LFSR) */
 static void noise_clock_lfsr (struct noise* noise)
 {
 	uint16_t sh = noise->shift_register;
 	int shift = 1 + ((noise->reg[2] >> 7) * 5);
+
 	uint8_t feedback = (sh ^ (sh >> shift)) & 1;
-	noise->shift_register >>= 1;
-	noise->shift_register |= feedback << 14;
+	noise->shift_register = ((sh >> 1) & 0x3FFF) | (feedback << 14);
 }
 
 /* noise_clock_timer clocks the noise channel's timer */
@@ -375,9 +384,7 @@ static void noise_clock_timer (struct noise* noise)
 /* noise_output returns the noise channel's envelope volume */
 static uint8_t noise_output (struct noise* noise)
 {
-	if (~STATUS & 0x80)
-		return 0;
-	else if (noise->shift_register & 1)
+	if ((noise->shift_register & 1) == 0)
 		return 0;
 	else if (noise->length_counter == 0)
 		return 0;
@@ -399,15 +406,6 @@ static void noise_reload_len_counter (struct noise* noise, uint8_t v)
 {
 	noise->length_counter = length_counter_table[v >> 3]; // reload length counter
 	noise->env.start = 1; // restart the envelope
-}
-
-/* new_noise_channel returns a new noise channel */
-static void noise_init (struct noise* noise, uint8_t* reg)
-{
-	noise->reg = reg;
-	noise->shift_register = 1;
-	noise->timer = 0;
-	envelope_init (&noise->env, reg);
 }
 
 /* dmc_mem_reader represents the DMC channel's memory reader unit */
@@ -890,8 +888,10 @@ void nes_apu_reset ()
 
 #define DEFAULT_SAMPLE_RATE 44100
 
-/* sample_freq is the current sampling rate when rendering the audio. */
+/* audio_sample_rate is the playback sample rate of the application. */
 static int audio_sample_rate = DEFAULT_SAMPLE_RATE;
+
+/* sample_freq is the number of CPU cycles between sampling. */
 static float sample_freq = NES_CPU_FREQ / DEFAULT_SAMPLE_RATE;
 
 /* nsamples is the number samples in the render buffer. */
@@ -969,11 +969,11 @@ void nes_audio_set_sample_rate (int rate)
 /* mix will take output from all channels and return the resulting mix. */
 static inline float mix ()
 {
-	uint8_t p1 = pulse_output (&pulse_1);
-	uint8_t p2 = pulse_output (&pulse_2);
+	uint8_t p1 = pulse_output    (&pulse_1);
+	uint8_t p2 = pulse_output    (&pulse_2);
 	uint8_t tr = triangle_output (&triangle);
-	uint8_t n  = noise_output (&noise);
-	uint8_t d  = dmc_output (&dmc);
+	uint8_t n  = noise_output    (&noise);
+	uint8_t d  = dmc_output      (&dmc);
 
 	// we are using the less precise linear approximation
 	float pulse_out = 0.00752 * (p1 + p2);
