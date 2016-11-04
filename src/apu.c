@@ -145,6 +145,8 @@ static void pulse_timer_low_write (struct pulse* ch, uint8_t v)
 /* pulse_reload_len_counter handles writes to a channels length counter / timer high register. */
 static void pulse_reload_len_counter (struct pulse* ch, uint8_t v)
 {
+	if (~STATUS & ch->number)
+		return;
 	ch->length_counter = length_counter_table[v >> 3]; // reload length counter
 	ch->env.start = 1; // restart the envelope
 	ch->sequencer = 0; // restart sequencer
