@@ -81,6 +81,10 @@ static uint8_t envelope_volume (struct envelope* env)
 		return env->decay;
 }
 
+/*
+ * PULSE CHANNEL
+ */
+
 /* APU Pulse channel */
 struct pulse
 {
@@ -158,6 +162,7 @@ static void pulse_adjust_period (struct pulse* ch)
 	uint8_t shift = ch->reg[1] & 7;
 	if (shift == 0)
 		return;
+
 	uint16_t period = pulse_period (ch);
 	// shift period to get adjustement and switch sign if needed
 	uint16_t delta = period >> shift;
@@ -170,8 +175,7 @@ static void pulse_adjust_period (struct pulse* ch)
 	}
 	period += delta;
 	// set period overflow flag
-	ch->overflow = period > 0x7FF;
-	if (ch->overflow)
+	if ((ch->overflow = period > 0x7FF) != 0)
 		return;
 
 	// update the registers with the new period
@@ -243,6 +247,10 @@ static uint8_t pulse_output (struct pulse* ch)
 	return envelope_volume (&ch->env);
 }
 
+/*
+ * TRIANGLE CHANNEL
+ */
+
 /* triangle channel */
 struct triangle
 {
@@ -277,13 +285,10 @@ static void triangle_clock_timer (struct triangle* tr)
 {
 	if (tr->timer == 0)
 	{
-		triangle_reload_timer (tr);
 		// clock sequencer and reload timer
 		if (tr->linear_counter && tr->length_counter)
-		{
-			tr->sequencer ++;
-			tr->sequencer &= 0x1F;
-		}
+			tr->sequencer = (tr->sequencer + 1) & 0x1F;
+		triangle_reload_timer (tr);
 	}
 	else
 		tr->timer --;
@@ -335,14 +340,13 @@ static uint8_t triangle_output (struct triangle* tr)
 	return triangle_sequence[tr->sequencer];
 }
 
-/* noise_periods periods to load into the noise channel */
-static uint16_t noise_periods[16] =
-{
-	4, 8, 16, 32, 64, 96, 128, 160, 202, 254, 380, 508, 762, 1016, 2034, 4068
-};
+/*
+ * NOISE CHANNEL
+ */
 
 /* noise APU */
-struct noise {
+struct noise
+{
 	uint16_t shift_register;
 	uint16_t length_counter;
 	uint8_t* reg;
@@ -368,6 +372,12 @@ static void noise_clock_lfsr (struct noise* noise)
 	uint8_t feedback = (sh ^ (sh >> shift)) & 1;
 	noise->shift_register = ((sh >> 1) & 0x3FFF) | (feedback << 14);
 }
+
+/* noise_periods periods to load into the noise channel */
+static uint16_t noise_periods[16] =
+{
+	4, 8, 16, 32, 64, 96, 128, 160, 202, 254, 380, 508, 762, 1016, 2034, 4068
+};
 
 /* noise_clock_timer clocks the noise channel's timer */
 static void noise_clock_timer (struct noise* noise)
@@ -408,6 +418,10 @@ static void noise_reload_len_counter (struct noise* noise, uint8_t v)
 	noise->env.start = 1; // restart the envelope
 }
 
+/*
+ * DMC CHANNEL
+ */
+
 /* dmc_mem_reader represents the DMC channel's memory reader unit */
 struct dmc_mem_reader
 {
@@ -434,10 +448,10 @@ struct dmc_output_unit
 /* dmc_output_unit_init initializes the DMC output unit. Will set the unit to silent. */
 static void dmc_output_unit_init (struct dmc_output_unit* o)
 {
-	o->rsr = 0;
+	o->rsr       = 0;
 	o->remaining = 0;
-	o->silent = 1;
-	o->level = 0;
+	o->silent    = 1;
+	o->level     = 0;
 }
 
 /* dmc_rate_index contains rates for the DMC */
@@ -486,7 +500,7 @@ static void dmc_clock_reader (struct dmc* dmc)
 
 	// increment address
 	dmc->reader.address ++;
-	if (dmc->reader.address == 0)
+	if (dmc->reader.address == 0) // overflow
 		dmc->reader.address = 0x8000;
 
 	// decrement bytes remaining and clear the empty buffer flag
@@ -742,6 +756,12 @@ static void triangle_timer_high_write (uint8_t value)
 	triangle_reload_length_counter (&triangle, value);
 }
 
+/* write $400C */
+static void noise_env_write (uint8_t value)
+{
+	noise.env.start = 1;
+}
+
 /* write $400F */
 static void noise_len_cnt_write (uint8_t value)
 {
@@ -789,7 +809,42 @@ static void frame_counter_write (uint8_t value)
 
 /* APU register writers */
 typedef void (*writer) (uint8_t value) ;
-static writer writers[0x18] = { NULL };
+static writer writers[0x18] = {
+	// pulse 1 register write handlers
+	&pulse1_envelope_write,     // $4000
+	&pulse1_sweep_write,        // $4001
+	&pulse1_timer_low_write,    // $4002
+	&pulse1_len_cnt_write,      // $4003
+
+	// pulse 2 register write handlers
+	&pulse2_envelope_write,     // $4004
+	&pulse2_sweep_write,        // $4005
+	&pulse2_timer_low_write,    // $4006
+	&pulse2_len_cnt_write,      // $4007
+
+	// triangle register write handlers
+	&triangle_lin_cnt_write,    // $4008
+	0,
+	&triangle_timer_low_write,  // $400A
+	&triangle_timer_high_write, // $400B
+
+	// noise register write handlers
+	noise_env_write,            // $400C
+	0, 0,
+	&noise_len_cnt_write,       // $400F
+	0,
+
+	// dmc register write handlers
+	&dmc_direct_load,           // $4011
+	0, 0, 0,
+
+	// status write handler
+	&status_write,              // $4015
+	0,
+
+	// frame counter write handler
+	&frame_counter_write        // $4017
+};
 
 void nes_apu_register_write (uint16_t address, uint8_t value)
 {
@@ -840,6 +895,7 @@ void nes_apu_reset ()
 {
 	// get memory location of APU registers
 	__memory__ ((void**) &registers, 0x4000);
+	readers[0x15] = &status_read; // TODO this is not needed to be called on each reset
 
 	// initialize audio channels
 	pulse_init    (&pulse_1,  registers,      1);
@@ -847,38 +903,6 @@ void nes_apu_reset ()
 	triangle_init (&triangle, registers +  8);
 	noise_init    (&noise,    registers + 12);
 	dmc_init      (&dmc,      registers + 16);
-
-	// status register read handler
-	readers[0x15] = &status_read;
-
-	// pulse 1 register write handlers
-	writers[0x00] = &pulse1_envelope_write;
-	writers[0x01] = &pulse1_sweep_write;
-	writers[0x02] = &pulse1_timer_low_write;
-	writers[0x03] = &pulse1_len_cnt_write;
-
-	// pulse 2 register write handlers
-	writers[0x04] = &pulse2_envelope_write;
-	writers[0x05] = &pulse2_sweep_write;
-	writers[0x06] = &pulse2_timer_low_write;
-	writers[0x07] = &pulse2_len_cnt_write;
-
-	// triangle register write handlers
-	writers[0x08] = &triangle_lin_cnt_write;
-	writers[0x0A] = &triangle_timer_low_write;
-	writers[0x0B] = &triangle_timer_high_write;
-
-	// noise register write handlers
-	writers[0x0F] = &noise_len_cnt_write;
-
-	// dmc register write handlers
-	writers[0x11] = &dmc_direct_load;
-
-	// status write handler
-	writers[0x15] = &status_write;
-
-	// frame counter write handler
-	writers[0x17] = &frame_counter_write;
 
 	apucc = 0; // reset clock cycles
 	frame = 0; // reset frame
