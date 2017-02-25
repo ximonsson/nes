@@ -382,14 +382,6 @@ static void branch (int8_t offset)
 /* Store Handlers ----------------------------------------------------------------------------- */
 
 /**
- *  typedef function for store event handler.
- *  takes an address and value we are trying to store at it.
- *  returns 1 or 0 incase we should stop propagation.
- */
-typedef int (*store_handler) (uint16_t address, uint8_t value) ;
-static store_handler store_handlers[MAX_EVENT_HANDLERS];
-
-/**
  *  Store event handler for when we are modifying PPU registers.
  *  Stops propagation as PPU registers are special.
  */
@@ -447,6 +439,15 @@ static int on_apu_register_write (uint16_t address, uint8_t value)
 
 /* End Store Handlers ------------------------------------------------------------------------- */
 
+/* store_handlers are the handlers to be called when storing to RAM. */
+static store_handler store_handlers[MAX_EVENT_HANDLERS];
+static int n_store_handlers = 0; // number of store_handlers that are registered.
+
+void nes_cpu_add_store_handler (store_handler h)
+{
+	store_handlers[n_store_handlers] = h;
+	n_store_handlers ++;
+}
 
 /**
  *  Store value to memory.
@@ -473,14 +474,6 @@ static void mem_store (uint8_t value, uint16_t address)
 
 
 /* Read Handlers ------------------------------------------------------------------------------ */
-
-/**
- *  typedef for read event handler.
- *  takes an address and pointer to a value to set.
- *  returns 1 or 0 depending on if we should prevent propagation.
- */
-typedef int (*read_handler) (uint16_t address, uint8_t *value) ;
-static read_handler read_handlers[MAX_EVENT_HANDLERS];
 
 /* Read from PPU register */
 static int on_ppu_register_read (uint16_t address, uint8_t *value)
@@ -523,8 +516,15 @@ static int on_apu_register_read (uint16_t address, uint8_t* value)
 	return 0;
 }
 
-/* End Read Handlers -------------------------------------------------------------------------- */
+/* read_handlers contains the list of handlers to call when reading from RAM. */
+static read_handler read_handlers[MAX_EVENT_HANDLERS];
+static int n_read_handlers; // number of read handlers registered.
 
+void nes_cpu_add_read_handler (read_handler h)
+{
+	read_handlers[n_read_handlers] = h;
+	n_read_handlers ++;
+}
 
 /**
  *  Read a value from the memory.
@@ -597,11 +597,13 @@ void nes_cpu_reset ()
 	store_handlers[1] = &on_dma_write;
 	store_handlers[2] = &on_controller_port_write;
 	store_handlers[3] = &on_apu_register_write;
+	n_store_handlers = 4;
 
 	// register read event handlers
 	read_handlers[0]  = &on_ppu_register_read;
 	read_handlers[1]  = &on_controller_port_read;
 	read_handlers[2]  = &on_apu_register_read;
+	n_read_handlers = 3;
 }
 
 /**

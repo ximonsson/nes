@@ -2,7 +2,7 @@
  *  File: cpu.h
  *  Author: ximon
  *  Description: public interface towards cpu to be used within the cpu module.
-   ----------------------------------------------------------------------------------- */
+ * ----------------------------------------------------------------------------------- */
 #ifndef NES_CPU_H_
 #define NES_CPU_H_
 
@@ -62,6 +62,30 @@ void nes_cpu_stall (int /* cycles */);
  * nes_cpu_read_ram returns the byte @ address in RAM.
  */
 uint8_t nes_cpu_read_ram (uint16_t /* address */) ;
+
+/**
+ *  typedef function for store event handler.
+ *  takes an address and value we are trying to store at it.
+ *  returns 1 or 0 incase we should stop propagation.
+ */
+typedef int (*store_handler) (uint16_t address, uint8_t value) ;
+
+/**
+ *  nes_cpu_add_store_handler adds a store_handler called when storing to RAM.
+ */
+void nes_cpu_add_store_handler (store_handler /* handler */) ;
+
+/**
+ *  typedef for read event handler.
+ *  takes an address and pointer to a value to set.
+ *  returns 1 or 0 depending on if we should prevent propagation.
+ */
+typedef int (*read_handler) (uint16_t address, uint8_t *value) ;
+
+/**
+ *  nes_cpu_add_read_handler adds a store_handler called when reading from RAM.
+ */
+void nes_cpu_add_read_handler (read_handler /* handler */) ;
 
 /**
  *  Set the parameter p to a specific location in NES memory.

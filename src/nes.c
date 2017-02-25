@@ -3,6 +3,7 @@
 #include "nes/ppu.h"
 #include "nes/io.h"
 #include "nes/apu.h"
+#include "nes/mapper.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,7 +15,18 @@
 
 static uint8_t* prg_rom = 0;
 static uint8_t* chr_rom = 0;
+static int mapper = 0;
 
+
+static void register_mapper ()
+{
+	switch (mapper)
+	{
+	case 1:
+		nes_mmc1_load();
+		break;
+	}
+}
 
 /**
  *  Parse an iNES type ROM file.
@@ -35,8 +47,7 @@ static int load_ines (FILE *fp)
 		fseek (fp, trainer_size, SEEK_CUR);
 
 	// Mapper ---------------------------------------------------------
-	int mapper = (header[6] & 0xF0) >> 4 | (header[7] & 0xF0);
-	// register mapper ...
+	mapper = (header[6] & 0xF0) >> 4 | (header[7] & 0xF0);
 
 	// PPU mirroring --------------------------------------------------
 	int mirroring = MIRROR_HORIZONTAL;
@@ -97,17 +108,17 @@ static int load_ines (FILE *fp)
 	}
 
 	// VERBOSE
-	printf (" TV System: %s\n", header[9] & 1 ? "PAL" : "NTSC");
+	printf (" TV System:    %s\n", header[9] & 1 ? "PAL" : "NTSC");
 	printf (" PRG ROM size: %.2d x 16KB (= %.2dKB)\n", header[4], header[4] * 16);
 	printf (" CHR ROM size: %.2d x  8KB (= %.2dKB)\n", header[5], header[5] * 8);
 	printf (" PRG RAM size: %.2d x  8KB\n", prg_ram_size);
-	printf (" Trainer: %.3d\n", trainer_size);
-	printf (" Mapper: %.3d\n", mapper);
+	printf (" Trainer:      %.3d\n", trainer_size);
+	printf (" Mapper:       %.3d\n", mapper);
 
 	if (chr_rom_size == 0)
 		printf ("CHR RAM is used instead of CHR ROM\n");
 
-	printf ("Mirroring: ");
+	printf (" Mirroring: ");
 	switch (mirroring)
 	{
 		case MIRROR_HORIZONTAL:
@@ -161,9 +172,10 @@ int nes_start (const char* file)
 		return 1;
 
 	// init hardware
-	nes_cpu_reset ();
-	nes_ppu_reset ();
-	nes_apu_reset ();
+	nes_cpu_reset();
+	nes_ppu_reset();
+	nes_apu_reset();
+	register_mapper();
 	ppucc = 0;
 
 	return 0;
