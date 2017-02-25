@@ -6,6 +6,9 @@
 #include <string.h>
 #include <pthread.h>
 
+
+#define MAX_EVENT_HANDLERS 16
+
 #define OAM_DMA_REGISTER    0x4014
 
 /* Controllers port memory locations */
@@ -62,10 +65,6 @@ static int flags = STOP;
 // CPU signals
 static int signals;
 
-
-#define MAX_EVENT_HANDLERS 16
-
-
 /**
  *  CPU registers
  */
@@ -121,9 +120,9 @@ void nes_cpu_load_prg_rom (void *data)
 }
 
 
-/** ----------------------------------------------------------------------------------------------
+/** --------------------------------------------------------------------------------------------
  *  ADDRESSING FUNCTIONS
- *  ---------------------------------------------------------------------------------------------- */
+ *  -------------------------------------------------------------------------------------------- */
 
 /* Zero Page - $00 */
 static uint16_t zero_page ()
@@ -380,7 +379,7 @@ static void branch (int8_t offset)
 }
 
 
-/* Store Handlers --------------------------------------------------------------------------------------------------- */
+/* Store Handlers ----------------------------------------------------------------------------- */
 
 /**
  *  typedef function for store event handler.
@@ -438,14 +437,15 @@ static int on_controller_port_write (uint16_t address, uint8_t value)
 static int on_apu_register_write (uint16_t address, uint8_t value)
 {
 	// $4000 < address < $4015  or address = $4017
-	if ((address >= NES_APU_PULSE_1 && address <= NES_APU_STATUS) || address == NES_APU_FRAME_COUNTER)
+	if ((address >= NES_APU_PULSE_1 && address <= NES_APU_STATUS) ||
+		address == NES_APU_FRAME_COUNTER)
 	{
 		nes_apu_register_write (address, value);
 	}
 	return 0;
 }
 
-/* End Store Handlers ----------------------------------------------------------------------------------------------- */
+/* End Store Handlers ------------------------------------------------------------------------- */
 
 
 /**
@@ -472,12 +472,12 @@ static void mem_store (uint8_t value, uint16_t address)
 }
 
 
-/* Read Handlers ---------------------------------------------------------------------------------------------------- */
+/* Read Handlers ------------------------------------------------------------------------------ */
 
 /**
  *  typedef for read event handler.
  *  takes an address and pointer to a value to set.
- *  returns 1 or 0 depending on if we should prevent propagation
+ *  returns 1 or 0 depending on if we should prevent propagation.
  */
 typedef int (*read_handler) (uint16_t address, uint8_t *value) ;
 static read_handler read_handlers[MAX_EVENT_HANDLERS];
@@ -508,12 +508,14 @@ static int on_controller_port_read (uint16_t address, uint8_t *value)
 }
 
 /**
- * on_apu_register_read checks if the read event is for an APU register read and calls necessary functions
- * if the read is for an APU register a non zero value is returned to indicate to stop propagation.
+ *   on_apu_register_read checks if the read event is for an APU register read and calls necessary
+ *   functions if the read is for an APU register a non zero value is returned to indicate to stop
+ *   propagation.
  */
 static int on_apu_register_read (uint16_t address, uint8_t* value)
 {
-	if ((address >= NES_APU_PULSE_1 && address <= NES_APU_STATUS) || address == NES_APU_FRAME_COUNTER)
+	if ((address >= NES_APU_PULSE_1 && address <= NES_APU_STATUS) ||
+		address == NES_APU_FRAME_COUNTER)
 	{
 		*value = nes_apu_register_read (address);
 		return 1;
@@ -521,7 +523,7 @@ static int on_apu_register_read (uint16_t address, uint8_t* value)
 	return 0;
 }
 
-/* End Read Handlers ------------------------------------------------------------------------------------------------ */
+/* End Read Handlers -------------------------------------------------------------------------- */
 
 
 /**
@@ -545,7 +547,8 @@ uint8_t nes_cpu_read_ram (uint16_t address)
 
 /**
  *  Preferred abstract function for getting a value depending on addressing mode.
- *  Will make sure to call correct functions for read events and skip in case we are after the accumulator.
+ *  Will make sure to call correct functions for read events and skip in case we are after
+ *  the accumulator.
  */
 static uint8_t get_value (addressing_mode mode)
 {
@@ -1464,7 +1467,6 @@ void print_operation (operation* op) {
 
 	sprintf (reg_string, "A:%.2X X:%.2X Y:%.2X PS:%.2X SP:%.2X ", a, x, y, ps, sp);
 	operation_to_string (op, op_string);
-	// printf ("%.4X %.2X %-32s %s\n", pc, opcode, op_string, reg_string);
 	printf ("%.4X  ", pc);
 	for (int i = 0; i < op->bytes + 1; i ++)
 		printf ("%.2X ", memory[pc + i]);
@@ -1501,17 +1503,14 @@ int nes_cpu_step ()
 
 	#ifdef VERBOSE
 		print_operation (op);
+		printf ("\n");
 	#endif
 
 	// execute operation and step forward
 	pc ++;
 	operation_exec (op);
-
-	#ifdef VERBOSE
-		printf ("\n");
-	#endif
-
 	cc = cpucc - cc;
+
 	int cpucc_per_frame = SCANLINES_PER_FRAME * PPUCC_PER_SCANLINE / PPU_CC_PER_CPU_CC + 1;
 	if (cpucc > cpucc_per_frame)
 		cpucc -= cpucc_per_frame;

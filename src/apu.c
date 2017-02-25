@@ -309,7 +309,8 @@ static void triangle_clock_linear_counter (struct triangle* tr)
 		tr->linear_counter_reload = 0;
 }
 
-/* triangle_clock_length_counter clocks the triangle channel's length counter as long as it is not halted */
+/* triangle_clock_length_counter clocks the triangle channel's length counter
+ * as long as it is not halted. */
 static void triangle_clock_length_counter (struct triangle* tr)
 {
 	int halt = tr->reg[0] & 0x80;
@@ -807,7 +808,7 @@ static void frame_counter_write (uint8_t value)
 		clock_all ();
 }
 
-/* End APU Register Writers ----------------------------------------------------------------------------------------- */
+/* End APU Register Writers ------------------------------------------------------------------- */
 
 /* APU register writers */
 typedef void (*writer) (uint8_t value) ;
@@ -856,7 +857,7 @@ void nes_apu_register_write (uint16_t address, uint8_t value)
 }
 
 
-/* APU Register Readers --------------------------------------------------------------------------------------------- */
+/* APU Register Readers ------------------------------------------------------------------------ */
 
 static uint8_t status_read ()
 {
@@ -879,7 +880,7 @@ static uint8_t status_read ()
 	return ret;
 }
 
-/* End APU Register Readers ----------------------------------------------------------------------------------------- */
+/* End APU Register Readers ------------------------------------------------------------------- */
 
 /* APU register readers */
 typedef uint8_t (*reader) ();
@@ -1045,12 +1046,10 @@ void nes_apu_step ()
 
 	if ((apucc & 1) == 0) // even cycle
 	{
-		// clock pulse channels
+		// clock channels
 		pulse_clock_timer (&pulse_1);
 		pulse_clock_timer (&pulse_2);
-		// clock noise channel
 		noise_clock_timer (&noise);
-		// clock dmc timer
 		dmc_clock (&dmc);
 	}
 	// clock triangle
