@@ -123,6 +123,18 @@ void nes_ppu_load_vram (void* data)
 }
 
 
+void nes_ppu_load_chr_rom (void* data)
+{
+	memcpy (vram, data, 0x2000);
+}
+
+
+void nes_ppu_load_chr_rom_bank (void* data, int bank)
+{
+	memcpy (vram + bank * 0x1000, data, 0x1000);
+}
+
+
 void nes_ppu_load_oam_data (void* data)
 {
 	uint8_t oamaddr = ppu_registers[OAMADDR];

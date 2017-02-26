@@ -119,6 +119,11 @@ void nes_cpu_load_prg_rom (void *data)
 	);
 }
 
+void nes_cpu_load_prg_ram (void* data)
+{
+	memcpy (memory + PRG_RAM_LOCATION, data, 0x2000);
+}
+
 
 /** --------------------------------------------------------------------------------------------
  *  ADDRESSING FUNCTIONS
@@ -418,8 +423,8 @@ static int on_controller_port_write (uint16_t address, uint8_t value)
 {
 	if (address == CTRL_ONE_MEM_LOC)
 	{
-		nes_io_controller_port_write (0, value);
-		nes_io_controller_port_write (1, value);
+		nes_io_controller_port_write (nes_io_port_one, value);
+		nes_io_controller_port_write (nes_io_port_two, value);
 		return 1;
 	}
 	return 0;

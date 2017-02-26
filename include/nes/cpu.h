@@ -40,13 +40,18 @@ int nes_cpu_step () ;
 *  It expects that the data points to a memory location
 *  sufficiently large to fill PRG ROM.
 */
-void nes_cpu_load_prg_rom (void *data) ;
+void nes_cpu_load_prg_rom (void* /* data */) ;
 
 /**
  *  Load a bank of memory into PRG ROM.
  *  Bank # is either 0 or 1;
  */
-void nes_cpu_load_prg_rom_bank (void *data, int bank) ;
+void nes_cpu_load_prg_rom_bank (void* /* data */, int /* bank */) ;
+
+/**
+ *  nes_cpu_load_prg_ram loads data from source in PRG RAM
+ */
+void nes_cpu_load_prg_ram (void* /* data */) ;
 
 /**
  *  Send CPU signal.

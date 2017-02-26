@@ -32,10 +32,12 @@ static inline void write_chr_bank0 ()
 	if (mode == 1)
 	{
 		printf ("   4KB mode\n");
+		nes_chr_load_4kb_bank (mmc1_sr, 0);
 	}
 	else
 	{
 		printf ("   8KB mode\n");
+		nes_chr_load_8kb_bank (mmc1_sr >> 1);
 	}
 }
 
@@ -45,6 +47,7 @@ static inline void write_chr_bank0 ()
 static inline void write_chr_bank1 ()
 {
 	printf ("writing to MMC1 CHR 1 x%.2X\n", mmc1_sr);
+	nes_chr_load_4kb_bank (mmc1_sr, 1);
 }
 
 /**

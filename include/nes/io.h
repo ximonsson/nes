@@ -6,7 +6,7 @@
 #ifndef NES_IO_H_
 #define NES_IO_H_
 
-#include "nes.h"
+#include <nes.h>
 #include <stdint.h>
 
 /**
@@ -14,19 +14,19 @@
 */
 enum nes_io_controller_port
 {
-	port_one = 0,
-	port_two = 1
+	nes_io_port_one = 0,
+	nes_io_port_two = 1
 };
 
 /**
  * Register key press event for a player.
  */
-void nes_io_press_key (enum nes_io_controller_port port, enum controller_keys key) ;
+void nes_io_press_key (enum nes_io_controller_port port, nes_controller_keys key) ;
 
 /**
  *  Register key release event for a player.
  */
-void nes_io_release_key (enum nes_io_controller_port port, enum controller_keys key) ;
+void nes_io_release_key (enum nes_io_controller_port port, nes_controller_keys key) ;
 
 /**
  *  Get the controller state of the selected port.

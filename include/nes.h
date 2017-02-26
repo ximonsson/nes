@@ -44,29 +44,24 @@ void nes_step_frame () ;
 void nes_stop () ;
 
 /**
- *  Pause the current NES game.
- */
-void nes_pause () ;
-
-/**
  *  Register press event to player's controller.
  */
-void nes_press_button (unsigned int player, enum controller_keys key) ;
+void nes_press_button (unsigned int player, nes_controller_keys key) ;
 
 /**
  *  Register release event to player's controller.
  */
-void nes_release_button (unsigned int player, enum controller_keys key) ;
+void nes_release_button (unsigned int player, nes_controller_keys key) ;
 
 /**
  *  Save the current game as name.
  */
-void nes_save_game (const char *name) ;
+void nes_save_game (const char* name) ;
 
 /**
  *  Load previous game state from the save file at location.
  */
-void nes_load_save (const char *location) ;
+void nes_load_save (const char* location) ;
 
 /**
  *  Get a pointer to a finished rendered frame by the NES.

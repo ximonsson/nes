@@ -10,19 +10,21 @@
 #include <time.h>
 
 
-#define INES_HEADER_SIZE 16
-
-
-static int mapper = 0;
-
-static void register_mapper ()
+static uint8_t mapper = 0;
+static int register_mapper ()
 {
 	switch (mapper)
 	{
-	case 1:
+	case 0: // NROM
+		break;
+	case 1: // MMC1
 		nes_mmc1_load();
 		break;
+	default:
+		fprintf (stderr, "mapper not supported\n");
+		return 1;
 	}
+	return 0;
 }
 
 /* PRG ROM */
@@ -43,15 +45,18 @@ static uint8_t* chr_rom = 0;
 
 void nes_chr_load_4kb_bank (int bank, int lower)
 {
+	nes_ppu_load_chr_rom_bank (chr_rom + bank * 0x1000, lower);
 }
 
 void nes_chr_load_8kb_bank (int bank)
 {
+	nes_ppu_load_chr_rom (chr_rom + bank * 0x2000);
 }
 
 /**
  *  Parse an iNES type ROM file.
  */
+#define INES_HEADER_SIZE 16
 static int load_ines (FILE *fp)
 {
 	unsigned char header[INES_HEADER_SIZE];
@@ -69,6 +74,13 @@ static int load_ines (FILE *fp)
 
 	// Mapper ---------------------------------------------------------
 	mapper = (header[6] & 0xF0) >> 4 | (header[7] & 0xF0);
+	uint8_t zeroes[4] = { 0 };
+	if (memcmp (header + 11, zeroes, 4))
+	{
+		// not all zeroes in end of header
+		// we mask the upper 4 bits of the map number in this case.
+		mapper &= 0xF;
+	}
 
 	// PPU mirroring --------------------------------------------------
 	int mirroring = MIRROR_HORIZONTAL;
@@ -114,7 +126,7 @@ static int load_ines (FILE *fp)
 	int chr_rom_size = header[5] * 8 << 10;
 
 	if (chr_rom_size == 0)
-		chr_rom = malloc (0x2000); // ingen aning
+		chr_rom = calloc (0x2000, 1); // TODO ingen aning
 	else
 	{
 		chr_rom = malloc (chr_rom_size);
@@ -124,16 +136,16 @@ static int load_ines (FILE *fp)
 			fprintf (stderr, "expected %d, read %d\n", chr_rom_size, ret);
 			return 1;
 		}
-		// load it to VRAM in PPU
-		nes_ppu_load_vram (chr_rom);
 	}
+	// load it to VRAM in PPU
+	nes_ppu_load_chr_rom (chr_rom);
 
 	// VERBOSE
 	printf (" TV System:    %s\n", header[9] & 1 ? "PAL" : "NTSC");
-	printf (" PRG ROM size: %.2d x 16KB (= %.2dKB)\n", header[4], header[4] * 16);
-	printf (" CHR ROM size: %.2d x  8KB (= %.2dKB)\n", header[5], header[5] * 8);
-	printf (" PRG RAM size: %.2d x  8KB\n", prg_ram_size);
-	printf (" Trainer:      %.3d\n", trainer_size);
+	printf (" PRG ROM size: %2d x 16KB (= %3dKB)\n", header[4], header[4] * 16);
+	printf (" CHR ROM size: %2d x  8KB (= %3dKB)\n", header[5], header[5] * 8);
+	printf (" PRG RAM size: %2d x  8KB\n", prg_ram_size);
+	printf (" Trainer:      %d\n", trainer_size);
 	printf (" Mapper:       %.3d\n", mapper);
 
 	if (chr_rom_size == 0)
@@ -142,15 +154,15 @@ static int load_ines (FILE *fp)
 	printf (" Mirroring: ");
 	switch (mirroring)
 	{
-		case MIRROR_HORIZONTAL:
-			printf ("HORIZONTAL\n");
-			break;
-		case MIRROR_VERTICAL:
-			printf ("VERTICAL\n");
-			break;
-		case MIRROR_FOUR_SCREEN:
-			printf ("FOUR_SCREEN\n");
-			break;
+	case MIRROR_HORIZONTAL:
+		printf ("HORIZONTAL\n");
+		break;
+	case MIRROR_VERTICAL:
+		printf ("VERTICAL\n");
+		break;
+	case MIRROR_FOUR_SCREEN:
+		printf ("FOUR_SCREEN\n");
+		break;
 	}
 
 	return 0;

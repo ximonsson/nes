@@ -74,7 +74,17 @@ void nes_ppu_step () ;
 void nes_ppu_load_vram (void* /* data */) ;
 
 /**
- *
+ *  nes_ppu_load_chr_rom will copy data to the PPU CHR ROM.
+ */
+void nes_ppu_load_chr_rom (void* /* data */) ;
+
+/**
+ *  nes_ppu_load_chr_rom_bank will copy data to the specified PPU CHR ROM.
+ */
+void nes_ppu_load_chr_rom_bank (void* /* data */, int /* bank */) ;
+
+/**
+ *  nes_ppu_set_mirroring sets the mirroring mode in the nametables.
  */
 void nes_ppu_set_mirroring (nes_ppu_mirroring_mode /* mode */);
 
