@@ -20,6 +20,9 @@ static int register_mapper ()
 	case 1: // MMC1
 		nes_mmc1_load();
 		break;
+	case 2:
+		nes_uxrom_load();
+		break;
 	default:
 		fprintf (stderr, "mapper not supported\n");
 		return 1;
