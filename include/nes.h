@@ -27,13 +27,6 @@ typedef enum controller_keys
 nes_controller_keys;
 
 /**
- *  Run a NES game.
- *  file parameter points to the file on the filesystem.
- *  This function is blocking.
- */
-void nes_run (const char *file) ;
-
-/**
  * nes_start resets the hardware components and loads the game @ filepath
  * but will not start execution.
  * Returns non-zero error code in case there was an error reading the file.

@@ -13,10 +13,7 @@
 #define INES_HEADER_SIZE 16
 
 
-static uint8_t* prg_rom = 0;
-static uint8_t* chr_rom = 0;
 static int mapper = 0;
-
 
 static void register_mapper ()
 {
@@ -26,6 +23,30 @@ static void register_mapper ()
 		nes_mmc1_load();
 		break;
 	}
+}
+
+/* PRG ROM */
+static uint8_t* prg_rom = 0;
+
+void nes_prg_load_16k_bank (int bank, int lower)
+{
+	nes_cpu_load_prg_rom_bank (prg_rom + bank * 0x4000, lower);
+}
+
+void nes_prg_load_32k_bank (int bank)
+{
+	nes_cpu_load_prg_rom (prg_rom + bank * 0x8000);
+}
+
+/* CHR ROM */
+static uint8_t* chr_rom = 0;
+
+void nes_chr_load_4kb_bank (int bank, int lower)
+{
+}
+
+void nes_chr_load_8kb_bank (int bank)
+{
 }
 
 /**

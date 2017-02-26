@@ -1,12 +1,15 @@
 #include "nes/mmc1.h"
 #include "nes/cpu.h"
+#include "nes/nes.h"
 #include <stdio.h>
 
 
+/* MMC1 shift register */
 static uint8_t mmc1_sr;
 #define RESET_SR mmc1_sr = 0x10
 #define SHIFT_SR(v) mmc1_sr = (mmc1_sr >> 1) | ((v & 1) << 4)
 
+/* MMC1 control register */
 static uint8_t mmc1_ctrl;
 
 
@@ -25,6 +28,15 @@ static inline void write_control ()
 static inline void write_chr_bank0 ()
 {
 	printf ("writing to MMC1 CHR 0 x%.2X\n", mmc1_sr);
+	uint8_t mode = (mmc1_ctrl >> 4) & 1;
+	if (mode == 1)
+	{
+		printf ("   4KB mode\n");
+	}
+	else
+	{
+		printf ("   8KB mode\n");
+	}
 }
 
 /**
@@ -38,9 +50,29 @@ static inline void write_chr_bank1 ()
 /**
  *  Write to PRG bank register the value mmc1_sr.
  */
-static inline void write_prg_bank ()
+static inline void switch_prg_bank ()
 {
 	printf ("writing to MMC1 PRG BANK x%.2X\n", mmc1_sr);
+	uint8_t mode = (mmc1_ctrl >> 2) & 3;
+	uint8_t bank = mmc1_sr & 0xF;
+	switch (mode)
+	{
+	case 0: // switch 32 KB at $8000, ignoring low bit of bank number
+	case 1:
+		printf ("  32kb mode\n");
+		nes_prg_load_32k_bank (bank >> 1);
+		break;
+
+	case 2: // fix first bank at $8000 and switch 16 KB bank at $C000
+		printf ("  16kb mode, loading bank %d into lower bank\n", bank);
+		nes_prg_load_16k_bank (bank, 1);
+		break;
+
+	case 3: // fix last bank at $C000 and switch 16 KB bank at $8000
+		printf ("  16kb mode, loading bank %d into upper bank\n", bank);
+		nes_prg_load_16k_bank (bank, 0);
+		break;
+	}
 }
 
 /**
@@ -69,7 +101,7 @@ static int write (uint16_t addr, uint8_t v)
 				write_chr_bank1();
 				break;
 			case 3: // PRG Bank $E000-$FFFF
-				write_prg_bank();
+				switch_prg_bank();
 				break;
 			}
 			RESET_SR;
@@ -83,20 +115,20 @@ static int write (uint16_t addr, uint8_t v)
 	return 0;
 }
 
-
+/*
 static int read (uint16_t addr, uint8_t* v)
 {
 	if (addr >= 0x8000)
 	{
-		return 1;
+		return 0;
 	}
 	return 0;
 }
-
+*/
 
 void nes_mmc1_load ()
 {
 	nes_cpu_add_store_handler (&write);
-	nes_cpu_add_read_handler (&read);
+	//nes_cpu_add_read_handler (&read);
 	RESET_SR;
 }
