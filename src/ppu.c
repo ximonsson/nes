@@ -156,7 +156,7 @@ void nes_ppu_load_oam_data (void* data)
  */
 static uint16_t mirror_vertically (uint16_t address)
 {
-	return address &= 0x27FF;
+	return address &= 0x27FF; // TODO not sure this one works as intended
 }
 
 /**
@@ -184,6 +184,16 @@ static uint16_t mirror_four_screen (uint16_t address)
 	return address;
 }
 
+static uint16_t mirror_single0 (uint16_t address)
+{
+	return NAMETABLE_0 + (address % 0x0400);
+}
+
+static uint16_t mirror_single1 (uint16_t address)
+{
+	return NAMETABLE_1 + (address % 0x0400);
+}
+
 /* mirror function - takes an address and returns the respective one in VRAM respecting mirroring mode */
 typedef uint16_t (*address_mirrorer) (uint16_t) ;
 
@@ -192,8 +202,8 @@ static address_mirrorer address_mirrorers[5] =
 {
 	mirror_horizontally,
 	mirror_vertically,
-	NULL,
-	NULL,
+	mirror_single0,
+	mirror_single1,
 	mirror_four_screen,
 };
 
