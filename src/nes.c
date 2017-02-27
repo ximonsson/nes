@@ -32,19 +32,23 @@ static int register_mapper ()
 
 /* PRG ROM */
 static uint8_t* prg_rom = 0;
+static uint8_t prg_rom_n_banks = 0;
 
 void nes_prg_load_16k_bank (int bank, int lower)
 {
+	if (bank == -1)
+		bank += prg_rom_n_banks;
 	nes_cpu_load_prg_rom_bank (prg_rom + bank * 0x4000, lower);
 }
 
 void nes_prg_load_32k_bank (int bank)
 {
-	nes_cpu_load_prg_rom (prg_rom + bank * 0x8000);
+	nes_cpu_load_prg_rom (prg_rom + bank * 0x4000);
 }
 
 /* CHR ROM */
 static uint8_t* chr_rom = 0;
+static uint8_t chr_rom_n_banks = 0;
 
 void nes_chr_load_4kb_bank (int bank, int lower)
 {
@@ -53,7 +57,7 @@ void nes_chr_load_4kb_bank (int bank, int lower)
 
 void nes_chr_load_8kb_bank (int bank)
 {
-	nes_ppu_load_chr_rom (chr_rom + bank * 0x2000);
+	nes_ppu_load_chr_rom (chr_rom + bank * 0x1000);
 }
 
 /**
@@ -86,24 +90,25 @@ static int load_ines (FILE *fp)
 	}
 
 	// PPU mirroring --------------------------------------------------
-	int mirroring = MIRROR_HORIZONTAL;
+	int mirroring = NES_PPU_MIRROR_HORIZONTAL;
 	switch (header[6] & 0x9)
 	{
 	case 0: // horizontal mirroring
-		mirroring = MIRROR_HORIZONTAL;
+		mirroring = NES_PPU_MIRROR_HORIZONTAL;
 		break;
 	case 1: // vertical mirroring
-		mirroring = MIRROR_VERTICAL;
+		mirroring = NES_PPU_MIRROR_VERTICAL;
 		break;
 	case 8: // four screen mirroring
 	case 9:
-		mirroring = MIRROR_FOUR_SCREEN;
+		mirroring = NES_PPU_MIRROR_FOUR_SCREEN;
 		break;
 	}
 	nes_ppu_set_mirroring (mirroring);
 
 	// read PRG ROM --------------------------------------------------
-	int prg_rom_size = header[4] * 16 << 10;
+	prg_rom_n_banks = header[4];
+	int prg_rom_size = prg_rom_n_banks * 16 << 10;
 	prg_rom = calloc (prg_rom_size, 1);
 
 	if ((ret = fread (prg_rom, 1, prg_rom_size, fp)) != prg_rom_size)
@@ -126,7 +131,8 @@ static int load_ines (FILE *fp)
 	int prg_ram_size = header[8] == 0 ? 1 : header[8];
 
 	// CHR ROM --------------------------------------------------
-	int chr_rom_size = header[5] * 8 << 10;
+	chr_rom_n_banks = header[5];
+	int chr_rom_size = chr_rom_n_banks * 8 << 10;
 
 	if (chr_rom_size == 0)
 		chr_rom = calloc (0x2000, 1); // TODO ingen aning
@@ -145,8 +151,8 @@ static int load_ines (FILE *fp)
 
 	// VERBOSE
 	printf (" TV System:    %s\n", header[9] & 1 ? "PAL" : "NTSC");
-	printf (" PRG ROM size: %2d x 16KB (= %3dKB)\n", header[4], header[4] * 16);
-	printf (" CHR ROM size: %2d x  8KB (= %3dKB)\n", header[5], header[5] * 8);
+	printf (" PRG ROM size: %2d x 16KB (= %3dKB)\n", prg_rom_n_banks, header[4] * 16);
+	printf (" CHR ROM size: %2d x  8KB (= %3dKB)\n", chr_rom_n_banks, header[5] * 8);
 	printf (" PRG RAM size: %2d x  8KB\n", prg_ram_size);
 	printf (" Trainer:      %d\n", trainer_size);
 	printf (" Mapper:       %.3d\n", mapper);
@@ -157,13 +163,13 @@ static int load_ines (FILE *fp)
 	printf (" Mirroring: ");
 	switch (mirroring)
 	{
-	case MIRROR_HORIZONTAL:
+	case NES_PPU_MIRROR_HORIZONTAL:
 		printf ("HORIZONTAL\n");
 		break;
-	case MIRROR_VERTICAL:
+	case NES_PPU_MIRROR_VERTICAL:
 		printf ("VERTICAL\n");
 		break;
-	case MIRROR_FOUR_SCREEN:
+	case NES_PPU_MIRROR_FOUR_SCREEN:
 		printf ("FOUR_SCREEN\n");
 		break;
 	}
