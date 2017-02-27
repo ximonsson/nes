@@ -20,7 +20,7 @@ static int register_mapper ()
 	case 1: // MMC1
 		nes_mmc1_load();
 		break;
-	case 2:
+	case 2: // UxROM
 		nes_uxrom_load();
 		break;
 	default:
