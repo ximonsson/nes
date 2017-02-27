@@ -24,10 +24,9 @@ static uint8_t chr_bank1;
  */
 static inline void switch_chr_bank0 ()
 {
-	//printf ("MMC1 switch CHR BANK, ");
-	//printf ("Control = x%.2X, BANK = x%.2X\n", mmc1_ctrl, chr_bank0);
-	uint8_t mode = (mmc1_ctrl >> 4) & 1;
-	if (mode == 1)
+	printf ("MMC1 switch CHR BANK 0, Control = x%.2X, BANK = x%.2X\n", mmc1_ctrl, chr_bank0);
+	uint8_t mode = (mmc1_ctrl & 0x10) == 0x10;
+	if (mode)
 		nes_chr_load_4kb_bank (chr_bank0, 0);
 	else
 		nes_chr_load_8kb_bank (chr_bank0 & 0x1E);
@@ -38,8 +37,9 @@ static inline void switch_chr_bank0 ()
  */
 static inline void switch_chr_bank1 ()
 {
-	uint8_t mode = (mmc1_ctrl >> 4) & 1;
-	if (mode == 1) // only switch in 4KB mode
+	printf ("MMC1 switch CHR BANK 1, Control = x%.2X, BANK = x%.2X\n", mmc1_ctrl, chr_bank1);
+	uint8_t mode = (mmc1_ctrl & 0x10) == 0x10;
+	if (mode) // only switch in 4KB mode
 		nes_chr_load_4kb_bank (chr_bank1, 1);
 }
 
@@ -48,14 +48,13 @@ static inline void switch_chr_bank1 ()
  */
 static inline void switch_prg_bank ()
 {
-	//printf ("MMC1 switch PRG BANK, ");
-	//printf ("Control = x%.2X, BANK = x%.2X\n", mmc1_ctrl, prg_bank);
+	printf ("MMC1 switch PRG BANK,   Control = x%.2X, BANK = x%.2X\n", mmc1_ctrl, prg_bank);
 	uint8_t mode = (mmc1_ctrl >> 2) & 3;
 	switch (mode)
 	{
 	case 0: // switch 32 KB at $8000, ignoring low bit of bank number
 	case 1:
-		//nes_prg_load_32k_bank (prg_bank & 0x1E);
+		//nes_prg_load_32k_bank (prg_bank & 0xE);
 		nes_prg_load_16k_bank (prg_bank & 0xE, 0);
 		nes_prg_load_16k_bank (prg_bank | 1, 1);
 		break;
@@ -73,10 +72,10 @@ static inline void switch_prg_bank ()
 /**
  *  Write to control register the value mmc1_sr.
  */
-static inline void write_control ()
+static inline void write_control (uint8_t v)
 {
-	mmc1_ctrl = mmc1_sr;
-	//printf ("MMC1 CONTROL write\n");
+	printf ("MMC1 CONTROL write (= x%.2X)\n", v);
+	mmc1_ctrl = v;
 
 	// rectify banks to the new control value
 	switch_prg_bank();
@@ -111,7 +110,7 @@ static int write (uint16_t addr, uint8_t v)
 		if ((v & 0x80) == 0x80) // reset shift register
 		{
 			RESET_SR;
-			mmc1_ctrl |= 0xC0;
+			write_control (mmc1_ctrl | 0x0C);
 		}
 		else
 		{
@@ -121,7 +120,7 @@ static int write (uint16_t addr, uint8_t v)
 				switch ((addr >> 13) & 3) // write to correct register
 				{
 				case 0: // Control $8000-9FFF
-					write_control();
+					write_control (mmc1_sr);
 					break;
 				case 1: // CHR Bank 0 $A000-$BFFF
 					chr_bank0 = mmc1_sr & 0x1F;
@@ -146,10 +145,10 @@ static int write (uint16_t addr, uint8_t v)
 
 void nes_mmc1_load ()
 {
+	prg_bank  = 0;
+	chr_bank0 = 0;
+	chr_bank1 = 0;
 	nes_cpu_add_store_handler (&write);
 	RESET_SR;
 	nes_prg_load_16k_bank (-1, 1);
-	prg_bank  = 0;
-	chr_bank0 = 0;
-	chr_bank1 = 1;
 }
