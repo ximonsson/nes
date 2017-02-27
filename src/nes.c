@@ -213,11 +213,12 @@ int nes_start (const char* file)
 	if (load_game (file) != 0)
 		return 1;
 
+	register_mapper();
+
 	// init hardware
 	nes_cpu_reset();
 	nes_ppu_reset();
 	nes_apu_reset();
-	register_mapper();
 	ppucc = 0;
 
 	return 0;

@@ -445,8 +445,16 @@ static int on_apu_register_write (uint16_t address, uint8_t value)
 /* End Store Handlers ------------------------------------------------------------------------- */
 
 /* store_handlers are the handlers to be called when storing to RAM. */
-static store_handler store_handlers[MAX_EVENT_HANDLERS];
-static int n_store_handlers = 0; // number of store_handlers that are registered.
+static store_handler store_handlers[MAX_EVENT_HANDLERS] =
+{
+	&on_ppu_register_write,
+	&on_dma_write,
+	&on_controller_port_write,
+	&on_apu_register_write,
+	NULL,
+	NULL
+};
+static int n_store_handlers = 4; // number of store_handlers that are registered.
 
 void nes_cpu_add_store_handler (store_handler h)
 {
@@ -522,8 +530,14 @@ static int on_apu_register_read (uint16_t address, uint8_t* value)
 }
 
 /* read_handlers contains the list of handlers to call when reading from RAM. */
-static read_handler read_handlers[MAX_EVENT_HANDLERS];
-static int n_read_handlers; // number of read handlers registered.
+static read_handler read_handlers[MAX_EVENT_HANDLERS] =
+{
+	&on_ppu_register_read,
+	&on_controller_port_read,
+	&on_apu_register_read,
+	NULL
+};
+static int n_read_handlers = 3; // number of read handlers registered.
 
 void nes_cpu_add_read_handler (read_handler h)
 {
@@ -593,22 +607,6 @@ void nes_cpu_reset ()
 	// load program counter
 	pc = memory[RST_VECTOR + 1];
 	pc = pc << 8 | memory[RST_VECTOR];
-
-	memset (store_handlers, 0, MAX_EVENT_HANDLERS * sizeof (store_handler));
-	memset (read_handlers,  0, MAX_EVENT_HANDLERS * sizeof (read_handler));
-
-	// register store event handlers
-	store_handlers[0] = &on_ppu_register_write;
-	store_handlers[1] = &on_dma_write;
-	store_handlers[2] = &on_controller_port_write;
-	store_handlers[3] = &on_apu_register_write;
-	n_store_handlers = 4;
-
-	// register read event handlers
-	read_handlers[0]  = &on_ppu_register_read;
-	read_handlers[1]  = &on_controller_port_read;
-	read_handlers[2]  = &on_apu_register_read;
-	n_read_handlers = 3;
 }
 
 /**

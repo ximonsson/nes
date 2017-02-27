@@ -17,4 +17,5 @@ static int write (uint16_t addr, uint8_t v)
 void nes_uxrom_load ()
 {
 	nes_cpu_add_store_handler (&write);
+	nes_prg_load_16k_bank (-1, 1);
 }
