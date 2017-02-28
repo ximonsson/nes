@@ -147,14 +147,21 @@ void nes_ppu_switch_chr_rom_bank (int bank, int chr_bank)
 	chr_rom_banks[chr_bank] = bank;
 }
 
+/* chr_address returns the correct address within CHR data array
+ * we assume that address is < $2000 */
+static inline uint16_t chr_address (uint16_t address)
+{
+	int bank = address / 0x1000;
+	uint16_t offset = address % 0x1000;
+	return chr_rom_banks[bank] * 0x1000 + offset;
+}
+
 /**
  *   read to CHR ROM making sure we read from the correct bank.
  */
 static uint8_t read_chr (uint16_t address)
 {
-	int bank = address / 0x1000;
-	uint16_t offset = address % 0x1000;
-	return chr_rom[chr_rom_banks[bank] * 0x1000 + offset];
+	return chr_rom[chr_address (address)];
 }
 
 /**
@@ -162,9 +169,7 @@ static uint8_t read_chr (uint16_t address)
  */
 static void write_chr (uint16_t address, uint8_t value)
 {
-	int bank = address / 0x1000;
-	uint16_t offset = address % 0x1000;
-	chr_rom[chr_rom_banks[bank] * 0x1000 + offset] = value;
+	chr_rom[chr_address (address)] = value;
 }
 
 
