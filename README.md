@@ -7,6 +7,7 @@ Currently NROM, SxROM and UxROM games are supported, but there are quite a few g
 
 ## Depedencies
 
+None for the library itself.
 To install the test application `libsdl2`, `libpulse` and `libgl` are needed.
 
 ## Installation
