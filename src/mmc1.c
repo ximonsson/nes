@@ -24,12 +24,14 @@ static uint8_t chr_bank1;
  */
 static inline void switch_chr_bank0 ()
 {
-	printf ("MMC1 switch CHR BANK 0, Control = x%.2X, BANK = x%.2X\n", mmc1_ctrl, chr_bank0);
 	uint8_t mode = (mmc1_ctrl & 0x10) == 0x10;
 	if (mode)
-		nes_chr_load_4kb_bank (chr_bank0, 0);
+		nes_chr_load_bank (chr_bank0, 0);
 	else
-		nes_chr_load_8kb_bank (chr_bank0 & 0x1E);
+	{
+		nes_chr_load_bank (chr_bank0 & 0x1E, 0);
+		nes_chr_load_bank (chr_bank0 | 1, 1);
+	}
 }
 
 /**
@@ -37,34 +39,49 @@ static inline void switch_chr_bank0 ()
  */
 static inline void switch_chr_bank1 ()
 {
-	printf ("MMC1 switch CHR BANK 1, Control = x%.2X, BANK = x%.2X\n", mmc1_ctrl, chr_bank1);
 	uint8_t mode = (mmc1_ctrl & 0x10) == 0x10;
 	if (mode) // only switch in 4KB mode
-		nes_chr_load_4kb_bank (chr_bank1, 1);
+		nes_chr_load_bank (chr_bank1, 1);
 }
 
 /**
- *  Write to PRG bank register the value mmc1_sr.
+ *  Reload CHR Banks.
+ */
+static inline void switch_chr_bank ()
+{
+	uint8_t mode = (mmc1_ctrl & 0x10) == 0x10;
+	if (mode)
+	{
+		nes_chr_load_bank (chr_bank0, 0);
+		nes_chr_load_bank (chr_bank1, 1);
+	}
+	else
+	{
+		nes_chr_load_bank (chr_bank0 & 0x1E, 0);
+		nes_chr_load_bank (chr_bank0 | 1, 1);
+	}
+}
+
+/**
+ *  Reload PRG Banks.
  */
 static inline void switch_prg_bank ()
 {
-	printf ("MMC1 switch PRG BANK,   Control = x%.2X, BANK = x%.2X\n", mmc1_ctrl, prg_bank);
 	uint8_t mode = (mmc1_ctrl >> 2) & 3;
 	switch (mode)
 	{
 	case 0: // switch 32 KB at $8000, ignoring low bit of bank number
 	case 1:
-		//nes_prg_load_32k_bank (prg_bank & 0xE);
-		nes_prg_load_16k_bank (prg_bank & 0xE, 0);
-		nes_prg_load_16k_bank (prg_bank | 1, 1);
+		nes_prg_load_bank (prg_bank & 0xE, 0);
+		nes_prg_load_bank (prg_bank | 1, 1);
 		break;
 	case 2: // fix first bank at $8000 and switch 16 KB bank at $C000
-		nes_prg_load_16k_bank (0, 0);
-		nes_prg_load_16k_bank (prg_bank, 1);
+		nes_prg_load_bank (0, 0);
+		nes_prg_load_bank (prg_bank, 1);
 		break;
 	case 3: // fix last bank at $C000 and switch 16 KB bank at $8000
-		nes_prg_load_16k_bank (-1, 1);
-		nes_prg_load_16k_bank (prg_bank, 0);
+		nes_prg_load_bank (-1, 1);
+		nes_prg_load_bank (prg_bank, 0);
 		break;
 	}
 }
@@ -74,13 +91,10 @@ static inline void switch_prg_bank ()
  */
 static inline void write_control (uint8_t v)
 {
-	printf ("MMC1 CONTROL write (= x%.2X)\n", v);
 	mmc1_ctrl = v;
-
 	// rectify banks to the new control value
 	switch_prg_bank();
-	switch_chr_bank0();
-	switch_chr_bank1();
+	switch_chr_bank();
 
 	// fix mirroring
 	switch (mmc1_ctrl & 3)
@@ -124,11 +138,11 @@ static int write (uint16_t addr, uint8_t v)
 					break;
 				case 1: // CHR Bank 0 $A000-$BFFF
 					chr_bank0 = mmc1_sr & 0x1F;
-					switch_chr_bank0();
+					switch_chr_bank();
 					break;
 				case 2: // CHR Bank 1 $C000-$DFFF
 					chr_bank1 = mmc1_sr & 0x1F;
-					switch_chr_bank1();
+					switch_chr_bank();
 					break;
 				case 3: // PRG Bank $E000-$FFFF
 					prg_bank = mmc1_sr & 0xF;
@@ -150,5 +164,5 @@ void nes_mmc1_load ()
 	chr_bank1 = 0;
 	nes_cpu_add_store_handler (&write);
 	RESET_SR;
-	nes_prg_load_16k_bank (-1, 1);
+	nes_prg_load_bank (-1, 1);
 }

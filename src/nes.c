@@ -31,34 +31,29 @@ static int register_mapper ()
 }
 
 /* PRG ROM */
+// TODO i would like the CPU to handle this like the PPU and CHR
 static uint8_t* prg_rom = 0;
 static uint8_t prg_rom_n_banks = 0;
+static uint8_t prg_rom_bank_loaded = 0;
 
-void nes_prg_load_16k_bank (int bank, int lower)
+void nes_prg_load_bank (int bank, int upper)
 {
 	if (bank == -1)
 		bank += prg_rom_n_banks;
-	nes_cpu_load_prg_rom_bank (prg_rom + bank * 0x4000, lower);
-}
-
-void nes_prg_load_32k_bank (int bank)
-{
-	nes_cpu_load_prg_rom (prg_rom + bank * 0x4000);
+	prg_rom_bank_loaded = bank;
+	nes_cpu_load_prg_rom_bank (prg_rom + bank * NES_PRG_ROM_BANK_SIZE, upper);
 }
 
 /* CHR ROM */
 static uint8_t* chr_rom = 0;
-static uint8_t chr_rom_n_banks = 0;
 
-void nes_chr_load_4kb_bank (int bank, int lower)
+void nes_chr_load_bank (int bank, int upper)
 {
-	nes_ppu_load_chr_rom_bank (chr_rom + bank * 0x1000, lower);
+	nes_ppu_switch_chr_rom_bank (bank, upper);
 }
 
-void nes_chr_load_8kb_bank (int bank)
-{
-	nes_ppu_load_chr_rom (chr_rom + bank * 0x1000);
-}
+/* battery_backed flags if the cartridge contains battery packed SRAM */
+static int battery_backed = 0;
 
 /**
  *  Parse an iNES type ROM file.
@@ -78,6 +73,9 @@ static int load_ines (FILE *fp)
 	int trainer_size = ((header[6] & 0x04) >> 2) * 512;
 	if (trainer_size)
 		fseek (fp, trainer_size, SEEK_CUR);
+
+	// cartridge contains battery backed PRG RAM
+	battery_backed = (header[6] & 2) == 2;
 
 	// Mapper ---------------------------------------------------------
 	mapper = (header[6] & 0xF0) >> 4 | (header[7] & 0xF0);
@@ -131,11 +129,11 @@ static int load_ines (FILE *fp)
 	int prg_ram_size = header[8] == 0 ? 1 : header[8];
 
 	// CHR ROM --------------------------------------------------
-	chr_rom_n_banks = header[5];
+	int chr_rom_n_banks = header[5];
 	int chr_rom_size = chr_rom_n_banks * 8 << 10;
 
-	if (chr_rom_size == 0)
-		chr_rom = calloc (0x2000, 1); // TODO ingen aning
+	if (chr_rom_size == 0) // CHR RAM
+		chr_rom = calloc (0x2000, 1);
 	else
 	{
 		chr_rom = malloc (chr_rom_size);
@@ -159,6 +157,9 @@ static int load_ines (FILE *fp)
 
 	if (chr_rom_size == 0)
 		printf ("CHR RAM is used instead of CHR ROM\n");
+
+	if (battery_backed)
+		printf ("Battery backed SRAM\n");
 
 	printf (" Mirroring: ");
 	switch (mirroring)

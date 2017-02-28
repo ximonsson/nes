@@ -68,7 +68,7 @@ static uint8_t   x;
 static int ppucc;
 
 
-// DEBUGGERS ----------------------------------------------------------------------------------------------------
+// DEBUGGERS --------------------------------------------------------------------------------------
 void print_pattern_table (uint16_t addr)
 {
 	printf ("Pattern @ x%4X [v = %4X, t = %4X, x = %d]\n ", addr, v, t, x);
@@ -94,7 +94,7 @@ void print_scroll ()
 	printf (" [v = x%.4X, t = x%.4X, x = %d, w = %d] coarse X = %2d, coarse Y = %2d, fine X = %d, fine Y = %d\n",
 		v, t, x, flags & w, v & 0x1F, (v >> 5) & 0x1F, x, (v >> 12) & 7);
 }
-// DEBUGGERS ----------------------------------------------------------------------------------------------------
+// DEBUGGERS ---------------------------------------------------------------------------------
 
 
 void nes_ppu_reset ()
@@ -123,15 +123,46 @@ void nes_ppu_load_vram (void* data)
 }
 
 
+/* chr_rom_banks contains indices for which CHR bank is currently loaded into
+ * CHR ROM 0, respectively CHR ROM 1. */
+static int chr_rom_banks[2] = {0, 1};
+
+/* chr_rom points to all banks of CHR data */
+static uint8_t* chr_rom;
+
 void nes_ppu_load_chr_rom (void* data)
 {
-	memcpy (vram, data, 0x2000);
+	chr_rom = data;
 }
-
 
 void nes_ppu_load_chr_rom_bank (void* data, int bank)
 {
 	memcpy (vram + bank * 0x1000, data, 0x1000);
+}
+
+void nes_ppu_switch_chr_rom_bank (int bank, int chr_bank)
+{
+	chr_rom_banks[chr_bank] = bank;
+}
+
+/**
+ *   read to CHR ROM making sure we read from the correct bank.
+ */
+static uint8_t read_chr (uint16_t address)
+{
+	int bank = address / 0x1000;
+	uint16_t offset = address % 0x1000;
+	return chr_rom[chr_rom_banks[bank] * 0x1000 + offset];
+}
+
+/**
+ *   write to CHR ROM making sure we write to the correct bank.
+ */
+static void write_chr (uint16_t address, uint8_t value)
+{
+	int bank = address / 0x1000;
+	uint16_t offset = address % 0x1000;
+	chr_rom[chr_rom_banks[bank] * 0x1000 + offset] = value;
 }
 
 
@@ -146,7 +177,7 @@ void nes_ppu_load_oam_data (void* data)
 
 
 /*
- *  Mirroring ----------------------------------------------------------------------------------------------
+ *  Mirroring ----------------------------------------------------------------------------------
  */
 
 /**
@@ -233,7 +264,7 @@ void nes_ppu_set_mirroring (nes_ppu_mirroring_mode mode)
 
 
 /*
- *  Register Writers ------------------------------------------------------------------------------------
+ *  Register Writers ---------------------------------------------------------------------------
  */
 
 /* Write > PPUCTRL $(2000) */
@@ -308,7 +339,10 @@ static void write_ppudata (uint8_t value)
 		vram[mirror_address (v)] = value;
 	}
 	else // patterns (no mirroring)
-		vram[v] = value;
+	{
+		//vram[v] = value;
+		write_chr (v, value);
+	}
 
 	v += 1 + ((ppu_registers[PPUCTRL] & 0x04) >> 2) * 31;
 	v &= 0x3FFF;
@@ -328,7 +362,7 @@ static void (*register_writers[8])(uint8_t) =
 };
 
 /*
- *  End Register Writers -----------------------------------------------------------------------------------------------
+ *  End Register Writers --------------------------------------------------------------------------
  */
 
 
@@ -343,7 +377,7 @@ void nes_ppu_register_write (nes_ppu_register reg, uint8_t value)
 
 
 /*
- *  Register Readers ---------------------------------------------------------------------------------------------------
+ *  Register Readers ------------------------------------------------------------------------------
  */
 
 /* Read < PPUSTATUS $(2002) */
@@ -382,7 +416,8 @@ static uint8_t read_ppudata ()
 	}
 	else // v < $2000: pattern read
 	{
-		vram_buffer = vram[v];
+		//vram_buffer = vram[v];
+		vram_buffer = read_chr (v);
 	}
 	// increment and wrap
 	v += 1 + ((ppu_registers[PPUCTRL] & 0x04) >> 2) * 31;
@@ -404,7 +439,7 @@ static uint8_t (*register_readers[8])() =
 };
 
 /*
- *  End Register Readers ----------------------------------------------------------------------------
+ *  End Register Readers ------------------------------------------------------------------------
  */
 
 
@@ -457,14 +492,16 @@ static inline void increment_horizontal_scroll ()
 
 /**
  *  tiles contains color information for the next 2 tiles (16 pixels).
- *  From low to high bits, each 4-bit value is the palette index of the pixel on the current scanline for dot 0 to 15.
+ *  From low to high bits, each 4-bit value is the palette index of the pixel on the current
+ *  scanline for dot 0 to 15.
  *  To fetch for example color(dot X) = (tiles >> (4 * X)) & 0xF.
  */
 static uint64_t tiles = 0;
 
 /**
  *  load_tile loads the next tile in relevance to the current scrolling (value of loopy_V).
- *  The old 32-bit data for the previous tile is shifted out, and the new tile data is loaded into the high bits of tiles.
+ *  The old 32-bit data for the previous tile is shifted out, and the new tile data is loaded
+ *  into the high bits of tiles.
  */
 static void load_tile ()
 {
@@ -479,11 +516,12 @@ static void load_tile ()
 	uint8_t table = (ppu_registers[PPUCTRL] & 0x10) >> 4;
 	// tile data
 	uint16_t tile = table * 0x1000 + nametable * 0x10 + y;
-	uint8_t low = vram[tile];
-	uint8_t high = vram[tile + 8];
+	uint8_t low = read_chr (tile); // vram[tile];
+	uint8_t high = read_chr (tile + 8); // vram[tile + 8];
 
 	// get attribute byte and compute background palette for this tile
-	uint8_t attribute = vram[mirror_address (0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07))];
+	uint8_t attribute =
+		vram[mirror_address (0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07))];
 	uint8_t palette = (attribute >> (((v >> 4) & 4) | (v & 2))) & 3;
 
 	uint64_t colors = 0;
@@ -509,8 +547,10 @@ static uint8_t background_color (int dot, uint8_t* pixel)
 }
 
 /**
- *  Get sprite color and pixel value at x and y coordinates within the sprite @ index within primary OAM.
- *  The value set to pixel can be used to determin if the pixel is transparent or not, by making the check pixel == 0.
+ *  Get sprite color and pixel value at x and y coordinates within the sprite @ index within
+ *  primary OAM.
+ *  The value set to pixel can be used to determin if the pixel is transparent or not, by
+ *  making the check pixel == 0.
  */
 static uint8_t sprite_color (int index, int x, int y, uint8_t *pixel)
 {
@@ -529,13 +569,16 @@ static uint8_t sprite_color (int index, int x, int y, uint8_t *pixel)
 	y += ((sprite[2] >> 7) & 1) * (7 - 2 * y);
 
 	// get pixel (0, 1 or 2?) (within palette?)
-	uint8_t low  = vram[pattern + y];
-	uint8_t high = vram[pattern + y + 8];
+	uint8_t low  = read_chr (pattern + y); //vram[pattern + y];
+	uint8_t high = read_chr (pattern + y + 8); //vram[pattern + y + 8];
 	*pixel = ((low >> (7 - x)) & 1) | (((high >> (7 - x)) << 1) & 2);
 	return vram[0x3F10 | (sprite[2] & 0x3) << 2 | (*pixel)];
 }
 
-/* set_pixel_color renders to virtual screen @ (x, y) the color pointed out by pindex from the palettee */
+/**
+ * set_pixel_color renders to virtual screen @ (x, y) the color pointed out by pindex from
+ * the palette.
+ */
 static void inline set_pixel_color (int x, int y, uint8_t pindex)
 {
 	static const uint8_t palette[64][3] = {
@@ -569,8 +612,10 @@ static void inline set_pixel_color (int x, int y, uint8_t pindex)
 #define SHOW_SPRITES    (ppu_registers[PPUMASK] & 0x10)
 #define SHOW_BACKGROUND (ppu_registers[PPUMASK] & 0x08)
 /**
- *  render_pixel wil compute what color the pixel @ (x, y) will have and render it to the virtual screen.
- *  Computation of pixel is done by taking into account background/sprite priorities and looking at nametables/sprites.
+ *  render_pixel wil compute what color the pixel @ (x, y) will have and render it to the
+ *  virtual screen.
+ *  Computation of pixel is done by taking into account background/sprite priorities and
+ *  looking at nametables/sprites.
  */
 static void inline render_pixel (int x, int y)
 {
@@ -689,16 +734,23 @@ static void sprite_evaluation ()
 // RENDERING_ENABLED returns wether either background or sprites are to be rendered
 #define RENDERING_ENABLED (ppu_registers[PPUMASK] & 0x18)
 
-/* tick makes the PPU turn one cycle, and making any status updates, such as odd/event frame flag, by doing so. */
+/**
+ * tick makes the PPU turn one cycle, and making any status updates,
+ * such as odd/event frame flag, by doing so.
+ */
 static void inline tick ()
 {
 	// compute scanline and dot we are currently rendering
 	int scanln = ppucc / PPUCC_PER_SCANLINE;
 	int dot = ppucc % PPUCC_PER_SCANLINE;
 
-	if (RENDERING_ENABLED && scanln == SCANLINES_PER_FRAME - 1 && dot == PPUCC_PER_SCANLINE - 2 && (flags & odd_frame))
+	if (RENDERING_ENABLED &&
+		scanln == SCANLINES_PER_FRAME - 1 &&
+		dot == PPUCC_PER_SCANLINE - 2 &&
+		(flags & odd_frame))
 	{
-		// If we are rendering, odd frames are one cycle shorter. This is done by skipping the last cycle of the frame.
+		// If we are rendering, odd frames are one cycle shorter.
+		// This is done by skipping the last cycle of the frame.
 		ppucc ++;
 	}
 	// tick PPU and update dot and scanline

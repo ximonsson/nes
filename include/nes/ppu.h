@@ -79,6 +79,11 @@ void nes_ppu_load_vram (void* /* data */) ;
 void nes_ppu_load_chr_rom (void* /* data */) ;
 
 /**
+ *  nes_ppu_switch_chr_rom_bank switches which CHR ROM bank is loaded @ bank 0/1.
+ */
+void nes_ppu_switch_chr_rom_bank (int /* bank */, int /* chr_bank */) ;
+
+/**
  *  nes_ppu_load_chr_rom_bank will copy data to the specified PPU CHR ROM.
  */
 void nes_ppu_load_chr_rom_bank (void* /* data */, int /* bank */) ;
