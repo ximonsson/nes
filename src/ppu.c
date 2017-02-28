@@ -137,11 +137,6 @@ void nes_ppu_load_chr_rom (void* data)
 	chr_rom_banks[1] = 1;
 }
 
-void nes_ppu_load_chr_rom_bank (void* data, int bank)
-{
-	memcpy (vram + bank * 0x1000, data, 0x1000);
-}
-
 void nes_ppu_switch_chr_rom_bank (int bank, int chr_bank)
 {
 	chr_rom_banks[chr_bank] = bank;
@@ -149,27 +144,30 @@ void nes_ppu_switch_chr_rom_bank (int bank, int chr_bank)
 
 /* chr_address returns the correct address within CHR data array
  * we assume that address is < $2000 */
-static inline uint16_t chr_address (uint16_t address)
+static inline uint8_t* chr_p (uint16_t address)
 {
 	int bank = address / 0x1000;
 	uint16_t offset = address % 0x1000;
-	return chr_rom_banks[bank] * 0x1000 + offset;
+	return chr_rom + chr_rom_banks[bank] * 0x1000 + offset;
 }
+
+/* macro to get a uint8_t* to the correct address within CHR ROM */
+#define CHR(addr) chr_rom + chr_rom_banks[addr / 0x1000] * 0x1000 + addr % 0x1000
 
 /**
  *   read to CHR ROM making sure we read from the correct bank.
  */
-static uint8_t read_chr (uint16_t address)
+static inline uint8_t chr_read (uint16_t address)
 {
-	return chr_rom[chr_address (address)];
+	return *(CHR (address));
 }
 
 /**
  *   write to CHR ROM making sure we write to the correct bank.
  */
-static void write_chr (uint16_t address, uint8_t value)
+static inline void write_chr (uint16_t address, uint8_t value)
 {
-	chr_rom[chr_address (address)] = value;
+	*(CHR (address)) = value;
 }
 
 
@@ -424,7 +422,7 @@ static uint8_t read_ppudata ()
 	else // v < $2000: pattern read
 	{
 		//vram_buffer = vram[v];
-		vram_buffer = read_chr (v);
+		vram_buffer = chr_read (v);
 	}
 	// increment and wrap
 	v += 1 + ((ppu_registers[PPUCTRL] & 0x04) >> 2) * 31;
@@ -523,8 +521,8 @@ static void load_tile ()
 	uint8_t table = (ppu_registers[PPUCTRL] & 0x10) >> 4;
 	// tile data
 	uint16_t tile = table * 0x1000 + nametable * 0x10 + y;
-	uint8_t low = read_chr (tile); // vram[tile];
-	uint8_t high = read_chr (tile + 8); // vram[tile + 8];
+	uint8_t low = chr_read (tile); // vram[tile];
+	uint8_t high = chr_read (tile + 8); // vram[tile + 8];
 
 	// get attribute byte and compute background palette for this tile
 	uint8_t attribute =
@@ -576,8 +574,8 @@ static uint8_t sprite_color (int index, int x, int y, uint8_t *pixel)
 	y += ((sprite[2] >> 7) & 1) * (7 - 2 * y);
 
 	// get pixel (0, 1 or 2?) (within palette?)
-	uint8_t low  = read_chr (pattern + y); //vram[pattern + y];
-	uint8_t high = read_chr (pattern + y + 8); //vram[pattern + y + 8];
+	uint8_t low  = chr_read (pattern + y); //vram[pattern + y];
+	uint8_t high = chr_read (pattern + y + 8); //vram[pattern + y + 8];
 	*pixel = ((low >> (7 - x)) & 1) | (((high >> (7 - x)) << 1) & 2);
 	return vram[0x3F10 | (sprite[2] & 0x3) << 2 | (*pixel)];
 }
