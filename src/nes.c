@@ -10,7 +10,7 @@
 #include <time.h>
 
 
-static int register_mapper (int mapper)
+static int load_mapper (int mapper)
 {
 	switch (mapper)
 	{
@@ -24,9 +24,8 @@ static int register_mapper (int mapper)
 		break;
 	case 4: // MMC3
 		nes_mmc3_load();
-		break;
 	default:
-		fprintf (stderr, "mapper not supported\n");
+		fprintf (stderr, "mapper (%.3d) not supported\n", mapper);
 		return 1;
 	}
 	return 0;
@@ -57,21 +56,60 @@ void nes_chr_load_bank (int bank, int upper)
 /* battery_backed flags if the cartridge contains battery packed SRAM */
 static int battery_backed = 0;
 
+/* size of iNES file header */
+#define INES_HEADER_SIZE 16
+
+/* Print data about the iNES header */
+static void print_ines_info (uint8_t header[INES_HEADER_SIZE])
+{
+	int mapper = (header[6] & 0xF0) >> 4 | (header[7] & 0xF0);
+
+	printf ("%.3s\n", header);
+	printf (" TV System:    %s\n", header[9] & 1 ? "PAL" : "NTSC");
+	printf (" Mapper:       %.3d\n", mapper);
+	printf (" PRG ROM size:  %2d x 16KB (= %3dKB)\n", header[4], header[4] * 16);
+	printf (" PRG RAM size:  %2d x  8KB\n", header[8] == 0 ? 1 : header[8]);
+	if (header[5] != 0)
+		printf (" CHR ROM size:  %2d x  8KB (= %3dKB)\n", header[5], header[5] * 8);
+	else
+		printf (" CHR RAM is used instead of CHR ROM\n");
+
+	// int trainer_size = ((header[6] & 0x04) >> 2) * 512;
+	// printf (" Trainer:       %d\n", trainer_size);
+
+	if ((header[6] & 2) == 2)
+		printf ("Battery backed SRAM\n");
+
+	printf (" Mirroring: ");
+	switch (header[6] & 0x9)
+	{
+	case 0:
+		printf ("HORIZONTAL\n");
+		break;
+	case 1:
+		printf ("VERTICAL\n");
+		break;
+	case 8:
+	case 9:
+		printf ("FOUR SCREEN\n");
+		break;
+	}
+}
+
 /**
  *  Parse an iNES type ROM file.
  */
-#define INES_HEADER_SIZE 16
 static int load_ines (FILE *fp)
 {
+	int ret = 0;
 	unsigned char header[INES_HEADER_SIZE];
 	if (fread (header, 1, INES_HEADER_SIZE, fp) != INES_HEADER_SIZE)
 	{
 		fprintf (stderr, "did not get all bytes for ines header\n");
 		return 1;
 	}
-	printf ("%.3s\n", header);
 
-	int ret = 0;
+	// check trainer - jump over it if it exists
 	int trainer_size = ((header[6] & 0x04) >> 2) * 512;
 	if (trainer_size)
 		fseek (fp, trainer_size, SEEK_CUR);
@@ -101,7 +139,6 @@ static int load_ines (FILE *fp)
 	if ((ret = fread (prg_rom, 1, prg_rom_size, fp)) != prg_rom_size)
 	{
 		fprintf (stderr, "did not get all bytes for PRG ROM\n");
-		fprintf (stderr, "expected %d, read %d\n", prg_rom_size, ret);
 		return 1;
 	}
 	// load PRG ROM data to memory
@@ -116,9 +153,6 @@ static int load_ines (FILE *fp)
 
 	// cartridge contains battery backed PRG RAM
 	battery_backed = (header[6] & 2) == 2;
-
-	// PRG RAM (unused) -----------------------------------------
-	int prg_ram_size = header[8] == 0 ? 1 : header[8];
 
 	// CHR ROM --------------------------------------------------
 	int chr_rom_n_banks = header[5];
@@ -147,36 +181,11 @@ static int load_ines (FILE *fp)
 		// we mask the upper 4 bits of the map number in this case.
 		mapper &= 0xF;
 	}
-	register_mapper (mapper);
+	// load the mapper - return in case we do not support it
+	if (load_mapper (mapper) != 0)
+		return 1;
 
-	// VERBOSE
-	printf (" TV System:    %s\n", header[9] & 1 ? "PAL" : "NTSC");
-	printf (" PRG ROM size: %2d x 16KB (= %3dKB)\n", prg_rom_n_banks, header[4] * 16);
-	printf (" CHR ROM size: %2d x  8KB (= %3dKB)\n", chr_rom_n_banks, header[5] * 8);
-	printf (" PRG RAM size: %2d x  8KB\n", prg_ram_size);
-	printf (" Trainer:      %d\n", trainer_size);
-	printf (" Mapper:       %.3d\n", mapper);
-
-	if (chr_rom_size == 0)
-		printf ("CHR RAM is used instead of CHR ROM\n");
-
-	if (battery_backed)
-		printf ("Battery backed SRAM\n");
-
-	printf (" Mirroring: ");
-	switch (mirroring)
-	{
-	case NES_PPU_MIRROR_HORIZONTAL:
-		printf ("HORIZONTAL\n");
-		break;
-	case NES_PPU_MIRROR_VERTICAL:
-		printf ("VERTICAL\n");
-		break;
-	case NES_PPU_MIRROR_FOUR_SCREEN:
-		printf ("FOUR_SCREEN\n");
-		break;
-	}
-
+	print_ines_info (header);
 	return 0;
 }
 
