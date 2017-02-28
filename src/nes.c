@@ -10,8 +10,7 @@
 #include <time.h>
 
 
-static uint8_t mapper = 0;
-static int register_mapper ()
+static int register_mapper (int mapper)
 {
 	switch (mapper)
 	{
@@ -25,6 +24,7 @@ static int register_mapper ()
 		break;
 	case 4: // MMC3
 		nes_mmc3_load();
+		break;
 	default:
 		fprintf (stderr, "mapper not supported\n");
 		return 1;
@@ -76,19 +76,6 @@ static int load_ines (FILE *fp)
 	if (trainer_size)
 		fseek (fp, trainer_size, SEEK_CUR);
 
-	// cartridge contains battery backed PRG RAM
-	battery_backed = (header[6] & 2) == 2;
-
-	// Mapper ---------------------------------------------------------
-	mapper = (header[6] & 0xF0) >> 4 | (header[7] & 0xF0);
-	uint8_t zeroes[4] = { 0 };
-	if (memcmp (header + 11, zeroes, 4))
-	{
-		// not all zeroes in end of header
-		// we mask the upper 4 bits of the map number in this case.
-		mapper &= 0xF;
-	}
-
 	// PPU mirroring --------------------------------------------------
 	int mirroring = NES_PPU_MIRROR_HORIZONTAL;
 	switch (header[6] & 0x9)
@@ -127,7 +114,10 @@ static int load_ines (FILE *fp)
 	else
 		nes_cpu_load_prg_rom (prg_rom);
 
-	// PRG RAM --------------------------------------------------
+	// cartridge contains battery backed PRG RAM
+	battery_backed = (header[6] & 2) == 2;
+
+	// PRG RAM (unused) -----------------------------------------
 	int prg_ram_size = header[8] == 0 ? 1 : header[8];
 
 	// CHR ROM --------------------------------------------------
@@ -142,12 +132,22 @@ static int load_ines (FILE *fp)
 		if ((ret = fread (chr_rom, 1, chr_rom_size, fp)) != chr_rom_size)
 		{
 			fprintf (stderr, "did not get all bytes for CHR ROM\n");
-			fprintf (stderr, "expected %d, read %d\n", chr_rom_size, ret);
 			return 1;
 		}
 	}
 	// load it to VRAM in PPU
 	nes_ppu_load_chr_rom (chr_rom);
+
+	// Mapper ---------------------------------------------------------
+	int mapper = (header[6] & 0xF0) >> 4 | (header[7] & 0xF0);
+	uint8_t zeroes[4] = { 0 };
+	if (memcmp (header + 11, zeroes, 4))
+	{
+		// not all zeroes in end of header
+		// we mask the upper 4 bits of the map number in this case.
+		mapper &= 0xF;
+	}
+	register_mapper (mapper);
 
 	// VERBOSE
 	printf (" TV System:    %s\n", header[9] & 1 ? "PAL" : "NTSC");
@@ -215,8 +215,6 @@ int nes_start (const char* file)
 	// load game
 	if (load_game (file) != 0)
 		return 1;
-
-	register_mapper();
 
 	// init hardware
 	nes_cpu_reset();
