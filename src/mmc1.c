@@ -20,31 +20,6 @@ static uint8_t chr_bank1;
 
 
 /**
- *  Write to CHR Bank 0 register the value mmc1_sr.
- */
-static inline void switch_chr_bank0 ()
-{
-	uint8_t mode = (mmc1_ctrl & 0x10) == 0x10;
-	if (mode)
-		nes_chr_load_bank (chr_bank0, 0);
-	else
-	{
-		nes_chr_load_bank (chr_bank0 & 0x1E, 0);
-		nes_chr_load_bank (chr_bank0 | 1, 1);
-	}
-}
-
-/**
- *  Write to CHR Bank 1 register the value mmc1_sr.
- */
-static inline void switch_chr_bank1 ()
-{
-	uint8_t mode = (mmc1_ctrl & 0x10) == 0x10;
-	if (mode) // only switch in 4KB mode
-		nes_chr_load_bank (chr_bank1, 1);
-}
-
-/**
  *  Reload CHR Banks.
  */
 static inline void switch_chr_bank ()

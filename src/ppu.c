@@ -133,6 +133,8 @@ static uint8_t* chr_rom;
 void nes_ppu_load_chr_rom (void* data)
 {
 	chr_rom = data;
+	chr_rom_banks[0] = 0;
+	chr_rom_banks[1] = 1;
 }
 
 void nes_ppu_load_chr_rom_bank (void* data, int bank)
