@@ -20,13 +20,16 @@ To install the test application `libsdl2`, `libpulse` and `libgl` are needed.
 
 ### Bugs
 
-* audio bug, probably incorrect loading of DMC samples.
-··· Super Mario Bros. if fireworks go off at end of level, sound effects are gone.
-··· Almost all games get a weird hacky sound after a couple of levels.
-* some glitches between nametables during scrolling, vertical scrolling mostly/only.
-··· Mega Man II
-* sprites are sometimes faulty in games using MMC1 - either their Y coordinate can be wrong or they are flipped incorrectly over X axis.
-··· Teenage Mutant Ninja Turtles - Leonardo's sword
+* **Audio** - probably incorrect loading of DMC samples. Sound works great at start of every game but after a while it will get borky.
+	* Almost all games get a weird hacky sound after a couple of levels.
+	* *Super Mario Bros.* if fireworks go off at end of level, sound effects are gone.
+
+* **Graphics** - some glitches between nametables during scrolling, vertical scrolling mostly/only.
+	* *Mega Man II*
+
+* **Graphics** - sprites are sometimes faulty in games using MMC1 - either their Y coordinate can be wrong or they are flipped incorrectly over X axis.
+	* *Teenage Mutant Ninja Turtles* - Leonardo's sword when facing south
+	* *Zelda II* - the explosion when defeating enemies
 
 ### Future Development
 
