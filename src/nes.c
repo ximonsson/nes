@@ -48,11 +48,6 @@ void nes_prg_load_bank (int bank, int upper)
 /* CHR ROM */
 static uint8_t* chr_rom = 0;
 
-void nes_chr_load_bank (int bank, int upper)
-{
-	nes_ppu_switch_chr_rom_bank (bank, upper);
-}
-
 /* battery_backed flags if the cartridge contains battery packed SRAM */
 static int battery_backed = 0;
 

@@ -25,15 +25,15 @@ static uint8_t chr_bank1;
 static inline void switch_chr_bank ()
 {
 	uint8_t mode = (mmc1_ctrl & 0x10) == 0x10;
-	if (mode)
+	if (mode) // 4KB mode
 	{
-		nes_chr_load_bank (chr_bank0, 0);
-		nes_chr_load_bank (chr_bank1, 1);
+		nes_ppu_switch_chr_rom_bank (chr_bank0, 0);
+		nes_ppu_switch_chr_rom_bank (chr_bank1, 1);
 	}
-	else
+	else // 8KB mode
 	{
-		nes_chr_load_bank (chr_bank0 & 0x1E, 0);
-		nes_chr_load_bank (chr_bank0 | 1, 1);
+		nes_ppu_switch_chr_rom_bank (chr_bank0 & 0x1E, 0);
+		nes_ppu_switch_chr_rom_bank (chr_bank0 | 1, 1);
 	}
 }
 
