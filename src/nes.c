@@ -39,7 +39,7 @@ static uint8_t prg_rom_bank_loaded = 0;
 
 void nes_prg_load_bank (int bank, int upper)
 {
-	if (bank == -1)
+	if (bank < 0)
 		bank += prg_rom_n_banks;
 	prg_rom_bank_loaded = bank;
 	nes_cpu_load_prg_rom_bank (prg_rom + bank * NES_PRG_ROM_BANK_SIZE, upper);
