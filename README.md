@@ -20,9 +20,9 @@ To install the test application `libsdl2`, `libpulse` and `libgl` are needed.
 
 ### Bugs
 
-* **Audio** - probably incorrect loading of DMC samples. Sound works great at start of every game but after a while it will get borky.
-	* Almost all games get a weird hacky sound after a couple of levels.
-	* *Super Mario Bros.* if fireworks go off at end of level, sound effects are gone.
+* **Audio** - Sound works great at start of every game but after a while it will get borky.
+	* Audio in all games get hacky after a while (~5min) Could be sampling rate?
+	* *Super Mario Bros.* if fireworks go off at end of level, sound effects are gone. (Pulse #2 is muted)
 
 * **Graphics** - some glitches between nametables during scrolling, vertical scrolling mostly/only.
 	* *Mega Man II*
