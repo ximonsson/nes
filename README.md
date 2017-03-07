@@ -22,17 +22,18 @@ To install the test application `libsdl2`, `libpulse` and `libgl` are needed.
 
 * **Audio** - Sound works great at start of every game but after a while it will get borky.
 	* Audio in all games get hacky after a while (~5min) Could be sampling rate?
-	* *Super Mario Bros.* if fireworks go off at end of level, sound effects are gone. (Pulse #2 is muted)
 
 * **Graphics** - some glitches between nametables during scrolling, vertical scrolling mostly/only.
 	* *Mega Man II*
 
-* **Graphics** - sprites are sometimes faulty in games using MMC1 - either their Y coordinate can be wrong or they are flipped incorrectly over X axis.
+* **Graphics** - sprites are sometimes faulty - either their Y coordinate can be wrong or they are flipped incorrectly over X axis.
 	* *Teenage Mutant Ninja Turtles* - Leonardo's sword when facing south
 	* *Zelda II* - the explosion when defeating enemies
 
 ### Future Development
 
+* reading PRG should be handled by mappers
+* reading CHR should be handled by mappers
 * more mapper support
 * battery support (SRAM)
 * saving/loading games (outside battery support)
