@@ -450,7 +450,6 @@ static store_handler store_handlers[MAX_EVENT_HANDLERS] =
 	&on_dma_write,
 	&on_controller_port_write,
 	&on_apu_register_write,
-	NULL,
 	NULL
 };
 static int n_store_handlers = 4; // number of store_handlers that are registered.
@@ -459,6 +458,7 @@ void nes_cpu_add_store_handler (store_handler h)
 {
 	store_handlers[n_store_handlers] = h;
 	n_store_handlers ++;
+	store_handlers[n_store_handlers] = NULL;
 }
 
 /**
@@ -528,31 +528,21 @@ static int on_apu_register_read (uint16_t address, uint8_t* value)
 	return 0;
 }
 
-static int on_read_prg (uint16_t address, uint8_t* value)
-{
-	if (address >= PRG_ROM_LOCATION)
-	{
-		// TODO could be a good idea to implement this
-		return 1;
-	}
-	return 0;
-}
-
 /* read_handlers contains the list of handlers to call when reading from RAM. */
 static read_handler read_handlers[MAX_EVENT_HANDLERS] =
 {
 	&on_ppu_register_read,
 	&on_controller_port_read,
 	&on_apu_register_read,
-	&on_read_prg,
 	NULL
 };
-static int n_read_handlers = 4; // number of read handlers registered.
+static int n_read_handlers = 3; // number of read handlers registered.
 
 void nes_cpu_add_read_handler (read_handler h)
 {
 	read_handlers[n_read_handlers] = h;
 	n_read_handlers ++;
+	read_handlers[n_read_handlers] = NULL;
 }
 
 /**
@@ -1502,7 +1492,6 @@ int nes_cpu_step ()
 		stalled --;
 		return 1;
 	}
-
 	int cc = cpucc;
 
 	// check interrupts
@@ -1525,10 +1514,7 @@ int nes_cpu_step ()
 	pc ++;
 	operation_exec (op);
 	cc = cpucc - cc;
-
-	int cpucc_per_frame = SCANLINES_PER_FRAME * PPUCC_PER_SCANLINE / PPU_CC_PER_CPU_CC + 1;
-	if (cpucc > cpucc_per_frame)
-		cpucc -= cpucc_per_frame;
+	cpucc = 0;
 
 	return cc;
 }
