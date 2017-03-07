@@ -142,15 +142,6 @@ void nes_ppu_switch_chr_rom_bank (int bank, int chr_bank)
 	chr_rom_banks[chr_bank] = bank;
 }
 
-/* chr_address returns the correct address within CHR data array
- * we assume that address is < $2000 */
-static inline uint8_t* chr_p (uint16_t address)
-{
-	int bank = address / 0x1000;
-	uint16_t offset = address % 0x1000;
-	return chr_rom + chr_rom_banks[bank] * 0x1000 + offset;
-}
-
 /* macro to get a uint8_t* to the correct address within CHR ROM */
 #define CHR(addr) chr_rom + chr_rom_banks[addr / 0x1000] * 0x1000 + addr % 0x1000
 
@@ -216,7 +207,6 @@ static uint16_t mirror_horizontally (uint16_t address)
  */
 static uint16_t mirror_four_screen (uint16_t address)
 {
-	// TODO implement
 	return address;
 }
 
@@ -492,7 +482,6 @@ static inline void increment_horizontal_scroll ()
 	}
 	else
 		v ++; // increment coarse X
-
 }
 
 /**
