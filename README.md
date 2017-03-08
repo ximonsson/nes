@@ -2,8 +2,8 @@
 
 NES Emulator
 
-Even though still in development, a lot of games can be played.
-Currently NROM, SxROM and UxROM games are supported, but there are quite a few graphic bugs that need to be rectified.
+Even though still in development, a lot of games can be played. There are still some bugs to solve.
+Currently NROM, SxROM and UxROM games are supported.
 
 ## Depedencies
 
