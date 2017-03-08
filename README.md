@@ -20,15 +20,14 @@ To install the test application `libsdl2`, `libpulse` and `libgl` are needed.
 
 ### Bugs
 
-* **Audio** - Sound works great at start of every game but after a while it will get borky.
+* **Audio**
 	* Audio in all games get hacky after a while (~5min) Could be sampling rate?
+	* DMC does not seem to work correctly (few games seem to use it so it is unnoticeable, might be the reason for the high pitch noise in *Mega Man II*)
 
-* **Graphics** - some glitches between nametables during scrolling, vertical scrolling mostly/only.
-	* *Mega Man II*
-
-* **Graphics** - sprites are sometimes faulty - either their Y coordinate can be wrong or they are flipped incorrectly over X axis.
-	* *Teenage Mutant Ninja Turtles* - Leonardo's sword when facing south
-	* *Zelda II* - the explosion when defeating enemies
+* **Graphics**
+	* *Mega Man II* vertical scrolling between levels vs Quickman is horrible.
+	* *Teenage Mutant Ninja Turtles* sprite visible during welcome screen.
+	* *Zelda* transition from welcome screen is not smooth as in other emulators.
 
 ### Future Development
 
