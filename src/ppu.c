@@ -183,7 +183,7 @@ void nes_ppu_load_oam_data (void* data)
  */
 static uint16_t mirror_vertically (uint16_t address)
 {
-	return address &= 0x27FF; // TODO not sure this one works as intended
+	return address &= 0x27FF;
 }
 
 /**
@@ -194,7 +194,7 @@ static uint16_t mirror_vertically (uint16_t address)
 static uint16_t mirror_horizontally (uint16_t address)
 {
 	if (address >= NAMETABLE_2)
-		address = NAMETABLE_1 + (address & 0x3ff);
+		address = NAMETABLE_1 + (address & 0x3FF);
 	else if (address >= NAMETABLE_1)
 		address -= 0x400;
 	return address;
@@ -210,14 +210,20 @@ static uint16_t mirror_four_screen (uint16_t address)
 	return address;
 }
 
+/**
+ * mirror_single0 mirrors the address for single page upper bank.
+ */
 static uint16_t mirror_single0 (uint16_t address)
 {
-	return NAMETABLE_0 + (address % 0x0400);
+	return NAMETABLE_0 + (address & 0x03FF);
 }
 
+/**
+ * mirror_single1 mirrors the address for single page lower bank.
+ */
 static uint16_t mirror_single1 (uint16_t address)
 {
-	return NAMETABLE_1 + (address % 0x0400);
+	return NAMETABLE_1 + (address & 0x03FF);
 }
 
 /* mirror function - takes an address and returns the respective one in VRAM respecting mirroring mode */
@@ -558,6 +564,7 @@ static uint8_t sprite_color (int index, int x, int y, uint8_t *pixel)
 		pattern = ((sprite[1] & 1) << 12) + ((sprite[1] & 0xFE) << 4) + ((y << 1) & 0x10);
 
 	// the formulas below solve flipping of sprites, but still keeps it correct if not flipped
+	// TODO I am not sure these work, they do not seem to take into account 8x16 sprites
 	y &= 7;
 	x += ((sprite[2] >> 6) & 1) * (7 - 2 * x);
 	y += ((sprite[2] >> 7) & 1) * (7 - 2 * y);
