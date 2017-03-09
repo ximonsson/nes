@@ -490,6 +490,50 @@ static inline void increment_horizontal_scroll ()
 		v ++; // increment coarse X
 }
 
+/* next nametable byte */
+static uint8_t nametable;
+/* load_nametable_byte loads the next nametable byte */
+static void load_nametable_byte ()
+{
+	nametable = vram[mirror_address (0x2000 | (v & 0x0FFF))];
+}
+
+/* next attribute byte */
+static uint8_t attribute;
+/* load_attribute_byte loads the next attribute byte. */
+static void load_attribute_byte ()
+{
+	attribute = vram[mirror_address (0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07))];
+}
+
+/* low byte of the next background tile */
+static uint8_t bg_tile_low;
+/* load_tile_low loads the low byte of the background tile. */
+static void load_tile_low ()
+{
+	// fine Y
+	uint8_t y = (v >> 12) & 7;
+	// flagged background pattern tile table in ppuctrl
+	uint8_t table = (ppu_registers[PPUCTRL] & 0x10) >> 4;
+	// tile data
+	uint16_t tile = table * 0x1000 + nametable * 0x10 + y;
+	bg_tile_low = chr_read (tile);
+}
+
+/* high byte of the next background tile */
+static uint8_t bg_tile_high;
+/* load_tile_high loads the high byte of the background tile. */
+static void load_tile_high ()
+{
+	// fine Y
+	uint8_t y = (v >> 12) & 7;
+	// flagged background pattern tile table in ppuctrl
+	uint8_t table = (ppu_registers[PPUCTRL] & 0x10) >> 4;
+	// tile data
+	uint16_t tile = table * 0x1000 + nametable * 0x10 + y;
+	bg_tile_high = chr_read (tile + 8);
+}
+
 /**
  *  tiles contains color information for the next 2 tiles (16 pixels).
  *  From low to high bits, each 4-bit value is the palette index of the pixel on the current
@@ -507,24 +551,10 @@ static void load_tile ()
 {
 	// shift out previous tile
 	tiles >>= 32;
-
-	// fine Y
-	uint8_t y = (v >> 12) & 7;
-	// get nametable byte
-	uint8_t nametable = vram[mirror_address (0x2000 | (v & 0x0FFF))];
-	// flagged background pattern tile table in ppuctrl
-	uint8_t table = (ppu_registers[PPUCTRL] & 0x10) >> 4;
-	// tile data
-	uint16_t tile = table * 0x1000 + nametable * 0x10 + y;
-	uint8_t low = chr_read (tile); // vram[tile];
-	uint8_t high = chr_read (tile + 8); // vram[tile + 8];
-
-	// get attribute byte and compute background palette for this tile
-	uint8_t attribute =
-		vram[mirror_address (0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07))];
-	uint8_t palette = (attribute >> (((v >> 4) & 4) | (v & 2))) & 3;
-
+	uint8_t  palette = (attribute >> (((v >> 4) & 4) | (v & 2))) & 3;
 	uint64_t colors = 0;
+	uint8_t  low    = bg_tile_low;
+	uint8_t  high   = bg_tile_high;
 	for (int i = 0; i < 8; i ++)
 	{
 		colors <<= 4;
@@ -789,6 +819,22 @@ void nes_ppu_step ()
 		// Scroll
 		if (visible_scanln || pre_scanln)
 		{
+			switch (dot & 7)
+			{
+				case 1:
+					load_nametable_byte();
+					break;
+				case 3:
+					load_attribute_byte();
+					break;
+				case 5:
+					load_tile_low();
+					break;
+				case 7:
+					load_tile_high();
+					break;
+			}
+
 			if (pre_scanln && dot >= 280 && dot <= 304)
 			{
 				// copy vertical bits from t to v
