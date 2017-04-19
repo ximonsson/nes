@@ -18,6 +18,10 @@ static uint8_t prg_bank;
 static uint8_t chr_bank0;
 static uint8_t chr_bank1;
 
+static uint8_t* prg;
+static uint8_t* chr;
+static int n_prg_banks;
+static int n_chr_banks;
 
 /**
  *  Reload CHR Banks.
@@ -40,6 +44,7 @@ static inline void switch_chr_bank ()
 /**
  *  Reload PRG Banks.
  */
+static int prg_banks[2];
 static inline void switch_prg_bank ()
 {
 	uint8_t mode = (mmc1_ctrl >> 2) & 3;
@@ -47,16 +52,22 @@ static inline void switch_prg_bank ()
 	{
 	case 0: // switch 32 KB at $8000, ignoring low bit of bank number
 	case 1:
-		nes_prg_load_bank (prg_bank & 0xE, 0);
-		nes_prg_load_bank (prg_bank | 1, 1);
+		//nes_prg_load_bank (prg_bank & 0xE, 0);
+		//nes_prg_load_bank (prg_bank | 1, 1);
+		prg_banks[0] = prg_bank & 0xE;
+		prg_banks[1] = prg_bank | 1;
 		break;
 	case 2: // fix first bank at $8000 and switch 16 KB bank at $C000
-		nes_prg_load_bank (0, 0);
-		nes_prg_load_bank (prg_bank, 1);
+		//nes_prg_load_bank (0, 0);
+		//nes_prg_load_bank (prg_bank, 1);
+		prg_banks[0] = 0;
+		prg_banks[1] = prg_bank;
 		break;
 	case 3: // fix last bank at $C000 and switch 16 KB bank at $8000
-		nes_prg_load_bank (-1, 1);
-		nes_prg_load_bank (prg_bank, 0);
+		//nes_prg_load_bank (-1, 1);
+		//nes_prg_load_bank (prg_bank, 0);
+		prg_banks[0] = prg_bank;
+		prg_banks[1] = n_prg_banks - 1;
 		break;
 	}
 }
@@ -71,7 +82,7 @@ static inline void write_control (uint8_t v)
 	switch_prg_bank();
 	switch_chr_bank();
 
-	// fix mirroring
+	// switch mirroring
 	switch (mmc1_ctrl & 3)
 	{
 	case 0: // one screen lower bank
@@ -92,7 +103,7 @@ static inline void write_control (uint8_t v)
 /**
  *   Write to shift register.
  */
-static int write (uint16_t addr, uint8_t v)
+static int write_prg_rom (uint16_t addr, uint8_t v)
 {
 	if (addr >= 0x8000)
 	{
@@ -132,12 +143,36 @@ static int write (uint16_t addr, uint8_t v)
 	return 0;
 }
 
-void nes_mmc1_load ()
+/* read_prg_rom defines a read event handler for PRG ROM making sure value from the correct bank is returned */
+static int read_prg_rom (uint16_t address, uint8_t* v)
+{
+	if (address >= 0x8000)
+	{
+		address &= 0x7FFF;
+		int bank = (address >> 14) & 1; // by looking @ bit 14 we can see which bank it is
+		int offset = address & (NES_PRG_ROM_BANK_SIZE - 1);
+		*v = prg[prg_banks[bank] * NES_PRG_ROM_BANK_SIZE + offset];
+		return 1;
+	}
+	return 0;
+}
+
+void nes_mmc1_load (int _n_prg_banks, uint8_t* _prg, int _n_chr_banks, uint8_t* _chr)
 {
 	prg_bank  = 0;
 	chr_bank0 = 0;
 	chr_bank1 = 0;
-	nes_cpu_add_store_handler (&write);
+
+	chr = _chr;
+	prg = _prg;
+	n_prg_banks = _n_prg_banks;
+	n_chr_banks = _n_chr_banks;
+
+	nes_cpu_add_store_handler (&write_prg_rom);
+	nes_cpu_add_read_handler (&read_prg_rom);
+
 	RESET_SR;
 	nes_prg_load_bank (-1, 1);
+	prg_banks[0] = prg_bank;
+	prg_banks[1] = n_prg_banks - 1;
 }

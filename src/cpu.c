@@ -9,8 +9,6 @@
 
 #define MAX_EVENT_HANDLERS 16
 
-#define OAM_DMA_REGISTER    0x4014
-
 /* Controllers port memory locations */
 #define CTRL_ONE_MEM_LOC    0x4016
 #define CTRL_TWO_MEM_LOC    0x4017
@@ -124,265 +122,6 @@ void nes_cpu_load_prg_ram (void* data)
 	memcpy (memory + PRG_RAM_LOCATION, data, 0x2000);
 }
 
-
-/** --------------------------------------------------------------------------------------------
- *  ADDRESSING FUNCTIONS
- *  -------------------------------------------------------------------------------------------- */
-
-/* Zero Page - $00 */
-static uint16_t zero_page ()
-{
-	return memory[pc];
-}
-
-/* Zero Page,X - $10,X */
-static uint16_t zero_page_x ()
-{
-	uint8_t ret = memory[pc] + x;
-	return ret;
-}
-
-/* Zero Page,Y - $10,Y */
-static uint16_t zero_page_y ()
-{
-	uint8_t ret = memory[pc] + y;
-	return ret;
-}
-
-/* Absolute - $1234 */
-static uint16_t absolute ()
-{
-	uint16_t addr = memory[pc + 1];
-	addr = (addr << 8) | memory[pc];
-	return addr;
-}
-
-/* Absolute,X - $1234,X */
-static uint16_t absolute_x ()
-{
-	uint16_t addr = absolute () + x;
-	if (DIFF_PAGE (addr, pc))
-		flags |= PAGE_CROSS;
-	return addr;
-}
-
-/* Absolute,Y - $1234,Y */
-static uint16_t absolute_y ()
-{
-	uint16_t addr = absolute () + y;
-	if (DIFF_PAGE (addr, pc))
-		flags |= PAGE_CROSS;
-	return addr;
-}
-
-/* Indirect - ($FFFC) */
-static uint16_t indirect ()
-{
-	uint8_t l = memory[pc];
-	uint16_t h = memory[pc + 1];
-	h <<= 8;
-
-	uint16_t low = h | l;
-	l ++;
-	uint16_t high = h | l;
-
-	uint16_t addr = memory[high];
-	addr = (addr << 8) | memory[low];
-
-	return addr;
-}
-
-/* Indexed Indirect - $(40,X) */
-static uint16_t indexed_indirect ()
-{
-	uint8_t l = memory[pc] + x;
-	uint8_t h = l + 1;
-	uint16_t addr = memory[h];
-	addr = (addr << 8) | memory[l];
-
-	return addr;
-}
-
-/* Indirect Indexed - ($40),Y */
-static uint16_t indirect_indexed ()
-{
-	uint8_t l = memory[pc];
-	uint8_t h = l + 1;
-	uint16_t addr = memory[h];
-	addr = ((addr << 8) | memory[l]) + y;
-
-	if (DIFF_PAGE (addr, pc))
-		flags |= PAGE_CROSS;
-
-	return addr;
-}
-
-/* Accumulator - A */
-static uint16_t accumulator ()
-{
-	return 0;
-}
-
-/* Immediate - #10 */
-static uint16_t immediate ()
-{
-	return pc;
-}
-
-/* Relative - *+4 */
-static uint16_t relative ()
-{
-	return pc;
-}
-
-// Array to address calculating function indexed by their mode.
-static uint16_t (*address_calculators[12])() =
-{
-	&accumulator,
-	&immediate,
-	&relative,
-	&zero_page,
-	&zero_page_x,
-	&zero_page_y,
-	&absolute,
-	&absolute_x,
-	&absolute_y,
-	&indirect,
-	&indexed_indirect,
-	&indirect_indexed
-};
-
-#ifdef VERBOSE
-static void accumulator_string (char *s)
-{
-	*s = 'A';
-}
-
-static void zero_page_string (char *s)
-{
-	sprintf (s, "$%.2X = %.2X", memory[pc], memory[zero_page()]);
-}
-
-static void zero_page_x_string (char *s)
-{
-	sprintf (s, "$%.2X,X = %.2X", memory[pc], memory[zero_page_x()]);
-}
-
-static void zero_page_y_string (char *s)
-{
-	sprintf (s, "$%.2X,Y = %.2X", memory[pc], memory[zero_page_y()]);
-}
-
-static void absolute_string (char *s)
-{
-	uint16_t m = absolute();
-	sprintf (s, "$%.4X = %.2X", m, memory[m]);
-}
-
-static void absolute_x_string (char *s)
-{
-	uint16_t m = absolute_x();
-	sprintf (s, "$%.4X,X = %.2X", m, memory[m]);
-}
-
-static void absolute_y_string (char *s)
-{
-	uint16_t m = absolute_y();
-	sprintf (s, "$%.4X,Y = %.2X", m, memory[m]);
-}
-
-static void indirect_string (char *s)
-{
-	uint16_t m = memory[pc], n = memory[pc + 1];
-	m = (n << 8) | m;
-	sprintf (s, "($%.4X) = %.4X", m, indirect());
-}
-
-static void indexed_indirect_string (char *s)
-{
-	uint8_t  m = memory[pc];
-	uint16_t a = indexed_indirect();
-	sprintf (s, "($%.2X,X) @ %.2X = %.4X = %.2X", m, m + x, a, memory[a]);
-}
-
-static void indirect_indexed_string (char *s)
-{
-	sprintf (s, "($%.2X),Y", memory[pc]);
-}
-
-static void immediate_string (char *s)
-{
-	sprintf (s, "#%.2X", memory[pc]);
-}
-
-static void implicit_string (char *s)
-{
-	// nada
-}
-
-// Array to address calculating function indexed by their mode.
-static void (*address_calculators_string[13])(char *) =
-{
-	&accumulator_string,
-	&immediate_string,
-	&immediate_string,
-	&zero_page_string,
-	&zero_page_x_string,
-	&zero_page_y_string,
-	&absolute_string,
-	&absolute_x_string,
-	&absolute_y_string,
-	&indirect_string,
-	&indexed_indirect_string,
-	&indirect_indexed_string,
-	&implicit_string
-};
-
-#endif // VERBOSE
-
-
-/**
- *  Calculate new address, number of bytes to progress and if a page cross occurred given
- *  an addressing mode.
- */
-static uint16_t calculate_address (addressing_mode mode)
-{
-	uint16_t addr = (*address_calculators[mode])();
-	return addr;
-}
-
-/* end ADDRESSING FUNCTIONS ----------------------------------------------------------- */
-
-
-/* Stack location in memory */
-#define STACK_LOCATION 0x0100
-
-/* Push a value on to the stack. */
-static void push (uint8_t value)
-{
-	memory[STACK_LOCATION | sp] = value;
-	sp --;
-}
-
-/* Pop a value from the stack. */
-static uint8_t pop ()
-{
-	sp ++;
-	return memory[STACK_LOCATION | sp];
-}
-
-/**
- *  Branch an offset number of bytes.
- */
-static void branch (int8_t offset)
-{
-	uint16_t _pc = pc + offset;
-	if (DIFF_PAGE (pc, _pc))
-		cpucc ++;
-	pc = _pc;
-}
-
-
 /* Store Handlers ----------------------------------------------------------------------------- */
 
 /**
@@ -403,6 +142,7 @@ static int on_ppu_register_write (uint16_t address, uint8_t value)
  *  Store event handler for when writing to OAM_DMA register.
  *  Stops propagation as it is not needed to be stored in RAM.
  */
+#define OAM_DMA_REGISTER 0x4014
 static int on_dma_write (uint16_t address, uint8_t value)
 {
 	if (address == OAM_DMA_REGISTER)
@@ -558,11 +298,256 @@ static uint8_t mem_read (uint16_t address)
 			break;
 	return b;
 }
+#define MEM(address) mem_read(address)
 
 uint8_t nes_cpu_read_ram (uint16_t address)
 {
 	return mem_read (address);
 }
+
+
+/** --------------------------------------------------------------------------------------------
+ *  ADDRESSING FUNCTIONS
+ *  -------------------------------------------------------------------------------------------- */
+
+/* Zero Page - $00 */
+static uint16_t zero_page ()
+{
+	//return memory[pc];
+	return MEM (pc);
+}
+
+/* Zero Page,X - $10,X */
+static uint16_t zero_page_x ()
+{
+	//uint8_t ret = memory[pc] + x;
+	uint8_t ret = MEM (pc) + x;
+	return ret;
+}
+
+/* Zero Page,Y - $10,Y */
+static uint16_t zero_page_y ()
+{
+	//uint8_t ret = memory[pc] + y;
+	uint8_t ret = MEM (pc) + y;
+	return ret;
+}
+
+/* Absolute - $1234 */
+static uint16_t absolute ()
+{
+	//uint16_t addr = memory[pc + 1];
+	//addr = (addr << 8) | memory[pc];
+	uint16_t addr = MEM (pc + 1);
+	addr = (addr << 8) | MEM (pc);
+	return addr;
+}
+
+/* Absolute,X - $1234,X */
+static uint16_t absolute_x ()
+{
+	uint16_t addr = absolute () + x;
+	if (DIFF_PAGE (addr, pc))
+		flags |= PAGE_CROSS;
+	return addr;
+}
+
+/* Absolute,Y - $1234,Y */
+static uint16_t absolute_y ()
+{
+	uint16_t addr = absolute () + y;
+	if (DIFF_PAGE (addr, pc))
+		flags |= PAGE_CROSS;
+	return addr;
+}
+
+/* Indirect - ($FFFC) */
+static uint16_t indirect ()
+{
+	//uint8_t l = memory[pc];
+	//uint16_t h = memory[pc + 1];
+	uint8_t l = MEM (pc);
+	uint16_t h = MEM (pc + 1);
+	h <<= 8;
+
+	uint16_t low = h | l;
+	l ++;
+	uint16_t high = h | l;
+
+	//uint16_t addr = memory[high];
+	//addr = (addr << 8) | memory[low];
+	uint16_t addr = MEM (high);
+	addr = (addr << 8) | MEM (low);
+
+	return addr;
+}
+
+/* Indexed Indirect - $(40,X) */
+static uint16_t indexed_indirect ()
+{
+	//uint8_t l = memory[pc] + x;
+	uint8_t l = MEM (pc) + x;
+	uint8_t h = l + 1;
+	//uint16_t addr = memory[h];
+	//addr = (addr << 8) | memory[l];
+	uint16_t addr = MEM (h);
+	addr = (addr << 8) | MEM (l);
+	return addr;
+}
+
+/* Indirect Indexed - ($40),Y */
+static uint16_t indirect_indexed ()
+{
+	//uint8_t l = memory[pc];
+	uint8_t l = MEM (pc);
+	uint8_t h = l + 1;
+
+	//uint16_t addr = memory[h];
+	//addr = ((addr << 8) | memory[l]) + y;
+	uint16_t addr = MEM (h);
+	addr = ((addr << 8) | MEM (l)) + y;
+
+	if (DIFF_PAGE (addr, pc))
+		flags |= PAGE_CROSS;
+
+	return addr;
+}
+
+/* Accumulator - A */
+static uint16_t accumulator ()
+{
+	return 0;
+}
+
+/* Immediate - #10 */
+static uint16_t immediate ()
+{
+	return pc;
+}
+
+/* Relative - *+4 */
+static uint16_t relative ()
+{
+	return pc;
+}
+
+// Array to address calculating function indexed by their mode.
+static uint16_t (*address_calculators[12])() =
+{
+	&accumulator,
+	&immediate,
+	&relative,
+	&zero_page,
+	&zero_page_x,
+	&zero_page_y,
+	&absolute,
+	&absolute_x,
+	&absolute_y,
+	&indirect,
+	&indexed_indirect,
+	&indirect_indexed
+};
+
+#ifdef VERBOSE
+static void accumulator_string (char *s)
+{
+	*s = 'A';
+}
+
+static void zero_page_string (char *s)
+{
+	sprintf (s, "$%.2X = %.2X", memory[pc], memory[zero_page()]);
+}
+
+static void zero_page_x_string (char *s)
+{
+	sprintf (s, "$%.2X,X = %.2X", memory[pc], memory[zero_page_x()]);
+}
+
+static void zero_page_y_string (char *s)
+{
+	sprintf (s, "$%.2X,Y = %.2X", memory[pc], memory[zero_page_y()]);
+}
+
+static void absolute_string (char *s)
+{
+	uint16_t m = absolute();
+	sprintf (s, "$%.4X = %.2X", m, memory[m]);
+}
+
+static void absolute_x_string (char *s)
+{
+	uint16_t m = absolute_x();
+	sprintf (s, "$%.4X,X = %.2X", m, memory[m]);
+}
+
+static void absolute_y_string (char *s)
+{
+	uint16_t m = absolute_y();
+	sprintf (s, "$%.4X,Y = %.2X", m, memory[m]);
+}
+
+static void indirect_string (char *s)
+{
+	uint16_t m = memory[pc], n = memory[pc + 1];
+	m = (n << 8) | m;
+	sprintf (s, "($%.4X) = %.4X", m, indirect());
+}
+
+static void indexed_indirect_string (char *s)
+{
+	uint8_t  m = memory[pc];
+	uint16_t a = indexed_indirect();
+	sprintf (s, "($%.2X,X) @ %.2X = %.4X = %.2X", m, m + x, a, memory[a]);
+}
+
+static void indirect_indexed_string (char *s)
+{
+	sprintf (s, "($%.2X),Y", memory[pc]);
+}
+
+static void immediate_string (char *s)
+{
+	sprintf (s, "#%.2X", memory[pc]);
+}
+
+static void implicit_string (char *s)
+{
+	// nada
+}
+
+// Array to address calculating function indexed by their mode.
+static void (*address_calculators_string[13])(char *) =
+{
+	&accumulator_string,
+	&immediate_string,
+	&immediate_string,
+	&zero_page_string,
+	&zero_page_x_string,
+	&zero_page_y_string,
+	&absolute_string,
+	&absolute_x_string,
+	&absolute_y_string,
+	&indirect_string,
+	&indexed_indirect_string,
+	&indirect_indexed_string,
+	&implicit_string
+};
+
+#endif // VERBOSE
+
+
+/**
+ *  Calculate new address, number of bytes to progress and if a page cross occurred given
+ *  an addressing mode.
+ */
+static uint16_t calculate_address (addressing_mode mode)
+{
+	uint16_t addr = (*address_calculators[mode])();
+	return addr;
+}
+
+/* end ADDRESSING FUNCTIONS ----------------------------------------------------------- */
 
 /**
  *  Preferred abstract function for getting a value depending on addressing mode.
@@ -580,6 +565,33 @@ static uint8_t get_value (addressing_mode mode)
 	}
 }
 
+/* Stack location in memory */
+#define STACK_LOCATION 0x0100
+
+/* Push a value on to the stack. */
+static void push (uint8_t value)
+{
+	memory[STACK_LOCATION | sp] = value;
+	sp --;
+}
+
+/* Pop a value from the stack. */
+static uint8_t pop ()
+{
+	sp ++;
+	return memory[STACK_LOCATION | sp];
+}
+
+/**
+ *  Branch an offset number of bytes.
+ */
+static void branch (int8_t offset)
+{
+	uint16_t _pc = pc + offset;
+	if (DIFF_PAGE (pc, _pc))
+		cpucc ++;
+	pc = _pc;
+}
 
 /* stalled containes the number of cycles to stall the CPU */
 static int stalled;
@@ -605,8 +617,12 @@ void nes_cpu_reset ()
 	stalled = 0;
 
 	// load program counter
-	pc = memory[RST_VECTOR + 1];
-	pc = pc << 8 | memory[RST_VECTOR];
+	//pc = memory[RST_VECTOR + 1];
+	//pc = pc << 8 | memory[RST_VECTOR];
+	pc = MEM (RST_VECTOR + 1);
+	pc = pc << 8 | MEM (RST_VECTOR);
+
+	// TODO reset store and read handlers
 }
 
 /**
@@ -641,8 +657,10 @@ static inline void interrupt (uint16_t _pc)
 /* nmi generates an interrupt and loads the NMI vector. */
 static void nmi ()
 {
-	uint16_t nmi_vector = memory[NMI_VECTOR + 1];
-	nmi_vector = (nmi_vector << 8) | memory[NMI_VECTOR];
+	//uint16_t nmi_vector = memory[NMI_VECTOR + 1];
+	//nmi_vector = (nmi_vector << 8) | memory[NMI_VECTOR];
+	uint16_t nmi_vector = MEM (NMI_VECTOR + 1);
+	nmi_vector = (nmi_vector << 8) | MEM (NMI_VECTOR);
 	interrupt (nmi_vector);
 }
 
@@ -653,8 +671,10 @@ static void irq ()
 {
 	if (~ps & INTERRUPT)
 	{
-		uint16_t irq_vector = memory[IRQ_VECTOR + 1];
-		irq_vector = (irq_vector << 8) | memory[IRQ_VECTOR];
+		//uint16_t irq_vector = memory[IRQ_VECTOR + 1];
+		//irq_vector = (irq_vector << 8) | memory[IRQ_VECTOR];
+		uint16_t irq_vector = MEM (IRQ_VECTOR + 1);
+		irq_vector = (irq_vector << 8) | MEM (IRQ_VECTOR);
 		interrupt (irq_vector);
 	}
 }
@@ -1502,7 +1522,8 @@ int nes_cpu_step ()
 	signals = 0;
 
 	// get operation
-	uint8_t opcode = memory[pc];
+	//uint8_t opcode = memory[pc];
+	uint8_t opcode = MEM (pc);
 	operation* op = &operations[opcode >> 4 & 0xF][opcode & 0xF];
 
 	#ifdef VERBOSE

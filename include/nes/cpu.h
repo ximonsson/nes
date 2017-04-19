@@ -73,6 +73,7 @@ uint8_t nes_cpu_read_ram (uint16_t /* address */) ;
  *  takes an address and value we are trying to store at it.
  *  returns 1 or 0 incase we should stop propagation.
  */
+// TODO rename
 typedef int (*store_handler) (uint16_t address, uint8_t value) ;
 
 /**
@@ -85,6 +86,7 @@ void nes_cpu_add_store_handler (store_handler /* handler */) ;
  *  takes an address and pointer to a value to set.
  *  returns 1 or 0 depending on if we should prevent propagation.
  */
+// TODO rename
 typedef int (*read_handler) (uint16_t address, uint8_t *value) ;
 
 /**

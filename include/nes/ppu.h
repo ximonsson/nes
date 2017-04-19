@@ -65,8 +65,7 @@ void nes_ppu_reset ();
 
 /**
  *  nes_ppu_step performs a cycle in the PPU.
- */
-void nes_ppu_step () ;
+*/ void nes_ppu_step () ;
 
 /**
  *  Load data into VRAM.
@@ -107,5 +106,30 @@ uint8_t nes_ppu_register_read (nes_ppu_register /* reg */) ;
  *  Load data into the PPUs OAM data.
  */
 void nes_ppu_load_oam_data (void* /* data */);
+
+/**
+ * nes_ppu_chr_reader defines a function type that takes an address and returns it's corresponding
+ * value within the CHR ROM.
+ */
+typedef uint8_t (*nes_ppu_chr_reader) (uint16_t /* address */) ;
+
+/**
+ * nes_ppu_set_chr_read is used to override default functionality reading CHR ROM which would be loaded
+ * data into VRAM.
+ * Mappers are to use this to make sure the PPU gets correct CHR data.
+ */
+void nes_ppu_set_chr_read (nes_ppu_chr_reader /* reader */) ;
+
+/**
+ * nes_ppu_chr_writer defines a function type that takes an address, a value and stores it to CHR ROM.
+ */
+typedef void (*nes_ppu_chr_writer) (uint16_t /* address */, uint8_t /* value */) ;
+
+/**
+ * nes_ppu_set_chr_writer is used to override the default functionality of writing CHR data to the VRAM and
+ * instead to custom locations.
+ * Mappers are to use this to better handle CHR data for the PPU.
+ */
+void nes_ppu_set_chr_writer (nes_ppu_chr_writer /* writer */) ;
 
 #endif

@@ -9,28 +9,6 @@
 #include <string.h>
 #include <time.h>
 
-
-static int load_mapper (int mapper)
-{
-	switch (mapper)
-	{
-	case 0: // NROM
-		break;
-	case 1: // MMC1
-		nes_mmc1_load();
-		break;
-	case 2: // UxROM
-		nes_uxrom_load();
-		break;
-	case 4: // MMC3
-		nes_mmc3_load();
-	default:
-		fprintf (stderr, "mapper (%.3d) not supported\n", mapper);
-		return 1;
-	}
-	return 0;
-}
-
 /* PRG ROM */
 // TODO i would like the CPU to handle this like the PPU and CHR
 static uint8_t* prg_rom = 0;
@@ -46,10 +24,32 @@ void nes_prg_load_bank (int bank, int upper)
 }
 
 /* CHR ROM */
+static int chr_rom_n_banks;
 static uint8_t* chr_rom = 0;
 
 /* battery_backed flags if the cartridge contains battery packed SRAM */
 static int battery_backed = 0;
+
+static int load_mapper (int mapper)
+{
+	switch (mapper)
+	{
+	case 0: // NROM
+		break;
+	case 1: // MMC1
+		nes_mmc1_load (prg_rom_n_banks, prg_rom, chr_rom_n_banks, chr_rom);
+		break;
+	case 2: // UxROM
+		nes_uxrom_load (prg_rom_n_banks, prg_rom, chr_rom_n_banks, chr_rom);
+		break;
+	case 4: // MMC3
+		nes_mmc3_load (prg_rom_n_banks, prg_rom, chr_rom_n_banks, chr_rom);
+	default:
+		fprintf (stderr, "mapper (%.3d) not supported\n", mapper);
+		return 1;
+	}
+	return 0;
+}
 
 /* size of iNES file header */
 #define INES_HEADER_SIZE 16
@@ -150,11 +150,14 @@ static int load_ines (FILE *fp)
 	battery_backed = (header[6] & 2) == 2;
 
 	// CHR ROM --------------------------------------------------
-	int chr_rom_n_banks = header[5];
+	chr_rom_n_banks = header[5];
 	int chr_rom_size = chr_rom_n_banks * 8 << 10;
 
 	if (chr_rom_size == 0) // CHR RAM
+	{
+		chr_rom_n_banks = 2;
 		chr_rom = calloc (0x2000, 1);
+	}
 	else
 	{
 		chr_rom = malloc (chr_rom_size);

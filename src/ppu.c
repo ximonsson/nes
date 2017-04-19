@@ -145,12 +145,36 @@ void nes_ppu_switch_chr_rom_bank (int bank, int chr_bank)
 /* macro to get a uint8_t* to the correct address within CHR ROM */
 #define CHR(addr) chr_rom + chr_rom_banks[addr / 0x1000] * 0x1000 + addr % 0x1000
 
+static uint8_t default_chr_read (uint16_t address)
+{
+	return *(CHR (address));
+}
+
+static nes_ppu_chr_reader chr_reader = default_chr_read;
+
+void nes_ppu_set_chr_read (nes_ppu_chr_reader r)
+{
+	chr_reader = r;
+}
+
 /**
  *   read to CHR ROM making sure we read from the correct bank.
  */
 static inline uint8_t chr_read (uint16_t address)
 {
-	return *(CHR (address));
+	return chr_reader (address);
+}
+
+static void default_chr_write (uint16_t address, uint8_t value)
+{
+	*(CHR (address)) = value;
+}
+
+static nes_ppu_chr_writer chr_writer = default_chr_write;
+
+void nes_ppu_set_chr_writer (nes_ppu_chr_writer w)
+{
+	chr_writer = w;
 }
 
 /**
@@ -158,7 +182,7 @@ static inline uint8_t chr_read (uint16_t address)
  */
 static inline void write_chr (uint16_t address, uint8_t value)
 {
-	*(CHR (address)) = value;
+	chr_writer (address, value);
 }
 
 

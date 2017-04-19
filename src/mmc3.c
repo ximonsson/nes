@@ -14,6 +14,11 @@ static uint8_t mmc3_registers[8];
 
 static uint8_t mmc3_counter = 0;
 
+static uint8_t* prg;
+static uint8_t* chr;
+static int n_prg_banks;
+static int n_chr_banks;
+
 static void update_prg_banks ()
 {
 	if (mmc3_bank_select & 0x40)
@@ -91,7 +96,9 @@ static int write (uint16_t address, uint8_t value)
 					nes_ppu_set_mirroring (NES_PPU_MIRROR_VERTICAL);
 			}
 			else // odd
-				; // we do not implement this - http://wiki.nesdev.com/w/index.php/MMC3#PRG_RAM_protect_.28.24A001-.24BFFF.2C_odd.29
+				// // we do not implement this
+				// http://wiki.nesdev.com/w/index.php/MMC3#PRG_RAM_protect_.28.24A001-.24BFFF.2C_odd.29
+				;
 		}
 		else if (address < 0xE000) // $C000 - $DFFF
 		{
@@ -126,7 +133,7 @@ void nes_mmc3_step ()
 }
 
 
-void nes_mmc3_load ()
+void nes_mmc3_load (int n_prg_banks_, uint8_t* prg_, int n_chr_banks_, uint8_t* chr_)
 {
 	nes_cpu_add_store_handler (write);
 	mmc3_bank_select     = 0;
@@ -136,4 +143,8 @@ void nes_mmc3_load ()
 	mmc3_irq_latch       = 0;
 	mmc3_irq_disable     = 0;
 	mmc3_counter         = 0;
+	prg = prg_;
+	chr = chr_;
+	n_prg_banks = n_prg_banks_;
+	n_chr_banks = n_chr_banks_;
 }
