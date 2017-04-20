@@ -15,7 +15,6 @@ static uint8_t mmc1_ctrl;
 
 /* keep track of selected banks for control register updates */
 static uint8_t prg_bank;
-static int chr_banks[2];
 
 static uint8_t* prg;
 static uint8_t* chr;
@@ -25,6 +24,7 @@ static int n_chr_banks;
 /**
  *  Reload CHR Banks.
  */
+static int chr_banks[2];
 static inline void switch_chr_bank ()
 {
 	if ((mmc1_ctrl & 0x10) != 0x10) // 8KB mode
@@ -32,8 +32,22 @@ static inline void switch_chr_bank ()
 		chr_banks[0] &= 0x1E;
 		chr_banks[1] = chr_banks[0] | 1;
 	}
-	nes_ppu_switch_chr_rom_bank (chr_banks[0], 0);
-	nes_ppu_switch_chr_rom_bank (chr_banks[1], 1);
+}
+
+/* define CHR bank size and macro to calculate address within CHR */
+#define CHR_BANK_SIZE 0x1000
+#define CHR(address) chr + chr_banks[address / CHR_BANK_SIZE] * CHR_BANK_SIZE + address % CHR_BANK_SIZE
+
+/* write_chr_rom is used for the PPU to write to CHR */
+static void write_chr_rom (uint16_t address, uint8_t v)
+{
+	*(CHR (address)) = v;
+}
+
+/* read_chr_rom is used for the PPU to read from CHR */
+static uint8_t read_chr_rom (uint16_t address)
+{
+	return *(CHR (address));
 }
 
 /**
@@ -59,6 +73,20 @@ static inline void switch_prg_bank ()
 		prg_banks[1] = n_prg_banks - 1;
 		break;
 	}
+}
+
+/* read_prg_rom defines a read event handler for PRG ROM making sure value from the correct bank is returned */
+static int read_prg_rom (uint16_t address, uint8_t* v)
+{
+	if (address >= 0x8000)
+	{
+		address &= 0x7FFF;
+		int bank = (address >> 14) & 1; // by looking @ bit 14 we can see which bank it is
+		int offset = address & (NES_PRG_ROM_BANK_SIZE - 1);
+		*v = prg[prg_banks[bank] * NES_PRG_ROM_BANK_SIZE + offset];
+		return 1;
+	}
+	return 0;
 }
 
 /**
@@ -130,33 +158,6 @@ static int write_prg_rom (uint16_t addr, uint8_t v)
 		return 1;
 	}
 	return 0;
-}
-
-/* read_prg_rom defines a read event handler for PRG ROM making sure value from the correct bank is returned */
-static int read_prg_rom (uint16_t address, uint8_t* v)
-{
-	if (address >= 0x8000)
-	{
-		address &= 0x7FFF;
-		int bank = (address >> 14) & 1; // by looking @ bit 14 we can see which bank it is
-		int offset = address & (NES_PRG_ROM_BANK_SIZE - 1);
-		*v = prg[prg_banks[bank] * NES_PRG_ROM_BANK_SIZE + offset];
-		return 1;
-	}
-	return 0;
-}
-
-#define CHR_BANK_SIZE 0x1000
-#define CHR(address) chr + chr_banks[address / CHR_BANK_SIZE] * CHR_BANK_SIZE + address % CHR_BANK_SIZE
-
-void write_chr_rom (uint16_t address, uint8_t v)
-{
-	*(CHR (address)) = v;
-}
-
-uint8_t read_chr_rom (uint16_t address)
-{
-	return *(CHR (address));
 }
 
 void nes_mmc1_load (int _n_prg_banks, uint8_t* _prg, int _n_chr_banks, uint8_t* _chr)
