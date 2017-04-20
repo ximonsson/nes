@@ -10,7 +10,7 @@
 #include <time.h>
 
 /* PRG ROM */
-// TODO i would like the CPU to handle this like the PPU and CHR
+// TODO this should be removed in favor of letting the mapper overwrite reading from PRG ROM
 static uint8_t* prg_rom = 0;
 static uint8_t prg_rom_n_banks = 0;
 static uint8_t prg_rom_bank_loaded = 0;

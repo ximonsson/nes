@@ -15,8 +15,7 @@ static uint8_t mmc1_ctrl;
 
 /* keep track of selected banks for control register updates */
 static uint8_t prg_bank;
-static uint8_t chr_bank0;
-static uint8_t chr_bank1;
+static int chr_banks[2];
 
 static uint8_t* prg;
 static uint8_t* chr;
@@ -28,17 +27,13 @@ static int n_chr_banks;
  */
 static inline void switch_chr_bank ()
 {
-	uint8_t mode = (mmc1_ctrl & 0x10) == 0x10;
-	if (mode) // 4KB mode
+	if ((mmc1_ctrl & 0x10) != 0x10) // 8KB mode
 	{
-		nes_ppu_switch_chr_rom_bank (chr_bank0, 0);
-		nes_ppu_switch_chr_rom_bank (chr_bank1, 1);
+		chr_banks[0] &= 0x1E;
+		chr_banks[1] = chr_banks[0] | 1;
 	}
-	else // 8KB mode
-	{
-		nes_ppu_switch_chr_rom_bank (chr_bank0 & 0x1E, 0);
-		nes_ppu_switch_chr_rom_bank (chr_bank0 | 1, 1);
-	}
+	nes_ppu_switch_chr_rom_bank (chr_banks[0], 0);
+	nes_ppu_switch_chr_rom_bank (chr_banks[1], 1);
 }
 
 /**
@@ -52,20 +47,14 @@ static inline void switch_prg_bank ()
 	{
 	case 0: // switch 32 KB at $8000, ignoring low bit of bank number
 	case 1:
-		//nes_prg_load_bank (prg_bank & 0xE, 0);
-		//nes_prg_load_bank (prg_bank | 1, 1);
 		prg_banks[0] = prg_bank & 0xE;
 		prg_banks[1] = prg_bank | 1;
 		break;
 	case 2: // fix first bank at $8000 and switch 16 KB bank at $C000
-		//nes_prg_load_bank (0, 0);
-		//nes_prg_load_bank (prg_bank, 1);
 		prg_banks[0] = 0;
 		prg_banks[1] = prg_bank;
 		break;
 	case 3: // fix last bank at $C000 and switch 16 KB bank at $8000
-		//nes_prg_load_bank (-1, 1);
-		//nes_prg_load_bank (prg_bank, 0);
 		prg_banks[0] = prg_bank;
 		prg_banks[1] = n_prg_banks - 1;
 		break;
@@ -123,11 +112,11 @@ static int write_prg_rom (uint16_t addr, uint8_t v)
 					write_control (mmc1_sr);
 					break;
 				case 1: // CHR Bank 0 $A000-$BFFF
-					chr_bank0 = mmc1_sr & 0x1F;
+					chr_banks[0] = mmc1_sr & 0x1F;
 					switch_chr_bank();
 					break;
 				case 2: // CHR Bank 1 $C000-$DFFF
-					chr_bank1 = mmc1_sr & 0x1F;
+					chr_banks[1] = mmc1_sr & 0x1F;
 					switch_chr_bank();
 					break;
 				case 3: // PRG Bank $E000-$FFFF
@@ -157,12 +146,21 @@ static int read_prg_rom (uint16_t address, uint8_t* v)
 	return 0;
 }
 
+#define CHR_BANK_SIZE 0x1000
+#define CHR(address) chr + chr_banks[address / CHR_BANK_SIZE] * CHR_BANK_SIZE + address % CHR_BANK_SIZE
+
+void write_chr_rom (uint16_t address, uint8_t v)
+{
+	*(CHR (address)) = v;
+}
+
+uint8_t read_chr_rom (uint16_t address)
+{
+	return *(CHR (address));
+}
+
 void nes_mmc1_load (int _n_prg_banks, uint8_t* _prg, int _n_chr_banks, uint8_t* _chr)
 {
-	prg_bank  = 0;
-	chr_bank0 = 0;
-	chr_bank1 = 0;
-
 	chr = _chr;
 	prg = _prg;
 	n_prg_banks = _n_prg_banks;
@@ -171,8 +169,13 @@ void nes_mmc1_load (int _n_prg_banks, uint8_t* _prg, int _n_chr_banks, uint8_t* 
 	nes_cpu_add_store_handler (&write_prg_rom);
 	nes_cpu_add_read_handler (&read_prg_rom);
 
+	nes_ppu_set_chr_writer (write_chr_rom);
+	nes_ppu_set_chr_read (read_chr_rom);
+
 	RESET_SR;
+	prg_bank = 0;
 	nes_prg_load_bank (-1, 1);
 	prg_banks[0] = prg_bank;
 	prg_banks[1] = n_prg_banks - 1;
+	chr_banks[0] = chr_banks[1] = 0;
 }

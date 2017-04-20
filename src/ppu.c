@@ -122,6 +122,9 @@ void nes_ppu_load_vram (void* data)
 	memcpy (vram, data, VRAM_SIZE);
 }
 
+// TODO cleanup all code around reading/writing to CHR
+//	- remove functions allowing to switch banks
+//	- make default to just read from chr_rom
 
 /* chr_rom_banks contains indices for which CHR bank is currently loaded into
  * CHR ROM 0, respectively CHR ROM 1. */
@@ -148,8 +151,10 @@ void nes_ppu_switch_chr_rom_bank (int bank, int chr_bank)
 static uint8_t default_chr_read (uint16_t address)
 {
 	return *(CHR (address));
+	//return chr_rom[address];
 }
 
+/* chr_reader points to the current function to be used for reading from CHR */
 static nes_ppu_chr_reader chr_reader = default_chr_read;
 
 void nes_ppu_set_chr_read (nes_ppu_chr_reader r)
@@ -168,8 +173,10 @@ static inline uint8_t chr_read (uint16_t address)
 static void default_chr_write (uint16_t address, uint8_t value)
 {
 	*(CHR (address)) = value;
+	//chr_rom[address] = value;
 }
 
+/* chr_writer points to the current function for writing to CHR */
 static nes_ppu_chr_writer chr_writer = default_chr_write;
 
 void nes_ppu_set_chr_writer (nes_ppu_chr_writer w)
