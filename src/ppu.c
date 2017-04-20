@@ -466,7 +466,6 @@ uint8_t nes_ppu_register_read (nes_ppu_register reg)
 	return 0;
 }
 
-
 /**
  *  Increase current vertical scroll.
  */
@@ -885,7 +884,7 @@ void nes_ppu_step ()
 			flags |= nmi_occurred;
 			if (ppu_registers[PPUCTRL] & GENERATE_NMI)
 			{
-				// TODO i have seen implementations where they delay this a number of cycles to fix timings.
+				// TODO i have seen implementations where they delay this a number (15) of cycles to fix timings.
 				nes_cpu_signal (NMI);
 			}
 		}
