@@ -7,7 +7,7 @@ SRC_DIR = src
 LIBS    = lib
 EXEC    = $(BIN)/nes
 
-SRC  = cpu.c io.c nes.c ppu.c apu.c mmc1.c uxrom.c mmc3.c
+SRC  = cpu.c io.c nes.c ppu.c apu.c mmc1.c uxrom.c mmc3.c mmc2.c
 OBJS = $(addprefix $(BUILD)/, $(SRC:.c=.o))
 LIB  = $(LIBS)/libnes.a
 

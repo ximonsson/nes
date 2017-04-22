@@ -45,6 +45,9 @@ static int load_mapper (int mapper)
 	case 4: // MMC3
 		nes_mmc3_load (prg_rom_n_banks, prg_rom, chr_rom_n_banks, chr_rom);
 		break;
+	case 9: // MMC2
+		nes_mmc2_load (prg_rom_n_banks, prg_rom, chr_rom_n_banks, chr_rom);
+		break;
 	default:
 		fprintf (stderr, "mapper (%.3d) not supported\n", mapper);
 		return 1;

@@ -48,16 +48,13 @@ static void update_prg_banks ()
 }
 
 #define PRG_ROM_BANK_SIZE 0x2000
-#define PRG(address) prg + \
-                     prg_banks[address / PRG_ROM_BANK_SIZE] * PRG_ROM_BANK_SIZE + \
-                     address % PRG_ROM_BANK_SIZE
+#define PRG(address) prg + prg_banks[address / PRG_ROM_BANK_SIZE] * PRG_ROM_BANK_SIZE + address % PRG_ROM_BANK_SIZE
 
 int prg_read (uint16_t address, uint8_t* v)
 {
 	if (address >= 0x8000)
 	{
-		address &= 0x7FFF;
-		*v = *(PRG (address));
+		*v = *(PRG ((address & 0x7FFF)));
 		return 1;
 	}
 	return 0;
@@ -129,8 +126,8 @@ static void write_bank_data (uint8_t v)
 	uint8_t reg = mmc3_bank_select & 7;
 	mmc3_registers[reg] = v;
 	// update banks
-	update_prg_banks();
-	update_chr_banks();
+	//update_prg_banks();
+	//update_chr_banks();
 }
 
 /* Event handler for writes to MMC3 registers */
@@ -142,14 +139,13 @@ static int write (uint16_t address, uint8_t value)
 		if (address < 0xA000) // $8000 - $9FFF
 		{
 			if (even) // even
-			{
 				mmc3_bank_select = value;
-				// update banks
-				update_prg_banks();
-				update_chr_banks();
-			}
 			else // odd
 				write_bank_data (value);
+
+			// update banks
+			update_prg_banks();
+			update_chr_banks();
 		}
 		else if (address < 0xC000) // $A000 - $BFFF
 		{
@@ -172,10 +168,13 @@ static int write (uint16_t address, uint8_t value)
 		}
 		else // $E000 - $FFFF
 		{
+			mmc3_irq_disable = even;
+			/*
 			if (even) // even
 				mmc3_irq_disable = 1; // disable IRQ
 			else // odd
 				mmc3_irq_disable = 0; // enable IRQ
+			*/
 		}
 		return 1;
 	}

@@ -1,4 +1,3 @@
-#include "nes/mmc1.h"
 #include "nes/cpu.h"
 #include "nes/ppu.h"
 #include "nes/nes.h"
