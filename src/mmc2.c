@@ -5,7 +5,7 @@
 
 #define CHR_BANK_SIZE 0x1000
 #define N_CHR_BANKS 2
-static int chr_banks[2][2];
+static int chr_banks[N_CHR_BANKS][2];
 static int n_chr_banks;
 static uint8_t* chr;
 
@@ -56,13 +56,22 @@ static void prg_write (uint16_t address, uint8_t v)
 }
 
 #define PRG_ROM_BANK_SIZE 0x2000
-#define PRG(address) prg + prg_banks[address / PRG_ROM_BANK_SIZE] * PRG_ROM_BANK_SIZE + address % PRG_ROM_BANK_SIZE
-static uint8_t prg_read (uint8_t address)
+//#define PRG(address) prg + prg_banks[address / PRG_ROM_BANK_SIZE] * PRG_ROM_BANK_SIZE + address % PRG_ROM_BANK_SIZE
+static int prg_read (uint16_t address, uint8_t* v)
 {
-	return *(PRG (address));
+	if (address >= 0x8000)
+	{
+		address &= 0x7FFF;
+		int bank = address / PRG_ROM_BANK_SIZE;
+		int offset = address % PRG_ROM_BANK_SIZE;
+		*v = prg[prg_banks[bank] * PRG_ROM_BANK_SIZE + offset];
+		//*v = *(PRG (address));
+		return 1;
+	}
+	return 0;
 }
 
-int write (uint16_t address, uint8_t v)
+static int write (uint16_t address, uint8_t v)
 {
 	if (address >= 0x8000)
 	{
@@ -75,12 +84,12 @@ int write (uint16_t address, uint8_t v)
 void nes_mmc2_load (int _n_prg_banks, uint8_t* _prg, int _n_chr_banks, uint8_t* _chr)
 {
 	n_prg_banks = _n_prg_banks;
-	prg = _prg;
+	prg         = _prg;
 	n_chr_banks = _n_chr_banks;
-	chr = _chr;
+	chr         = _chr;
 
-	nes_cpu_add_store_handler (write);
-	nes_cpu_add_read_handler (prg_read);
+	nes_cpu_add_store_handler (&write);
+	nes_cpu_add_read_handler (&prg_read);
 	nes_ppu_set_chr_writer (chr_write);
 	nes_ppu_set_chr_read (chr_read);
 

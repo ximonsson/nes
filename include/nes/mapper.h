@@ -14,6 +14,12 @@ void nes_uxrom_load (
 	int /* # chr bank */, uint8_t* /* chr */
 ) ;
 
+// Mapper 03
+void nes_cnrom_load (
+	int /* # prg bank */, uint8_t* /* prg */,
+	int /* # chr bank */, uint8_t* /* chr */
+) ;
+
 // Mapper 04
 void nes_mmc3_load (
 	int /* # prg bank */, uint8_t* /* prg */,
@@ -22,12 +28,6 @@ void nes_mmc3_load (
 
 // Mapper 09
 void nes_mmc2_load (
-	int /* # prg bank */, uint8_t* /* prg */,
-	int /* # chr bank */, uint8_t* /* chr */
-) ;
-
-// Mapper 03
-void nes_cnrom_load (
 	int /* # prg bank */, uint8_t* /* prg */,
 	int /* # chr bank */, uint8_t* /* chr */
 ) ;

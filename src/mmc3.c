@@ -1,6 +1,5 @@
 #include "nes/cpu.h"
 #include "nes/ppu.h"
-#include "nes/nes.h"
 #include <string.h>
 
 /* Registers */
@@ -50,7 +49,7 @@ static void update_prg_banks ()
 #define PRG_ROM_BANK_SIZE 0x2000
 #define PRG(address) prg + prg_banks[address / PRG_ROM_BANK_SIZE] * PRG_ROM_BANK_SIZE + address % PRG_ROM_BANK_SIZE
 
-int prg_read (uint16_t address, uint8_t* v)
+static int prg_read (uint16_t address, uint8_t* v)
 {
 	if (address >= 0x8000)
 	{

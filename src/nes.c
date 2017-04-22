@@ -10,18 +10,8 @@
 #include <time.h>
 
 /* PRG ROM */
-// TODO this should be removed in favor of letting the mapper overwrite reading from PRG ROM
 static uint8_t* prg_rom = 0;
 static uint8_t prg_rom_n_banks = 0;
-static uint8_t prg_rom_bank_loaded = 0;
-
-void nes_prg_load_bank (int bank, int upper)
-{
-	if (bank < 0)
-		bank += prg_rom_n_banks;
-	prg_rom_bank_loaded = bank;
-	nes_cpu_load_prg_rom_bank (prg_rom + bank * NES_PRG_ROM_BANK_SIZE, upper);
-}
 
 /* CHR ROM */
 static int chr_rom_n_banks;
@@ -41,6 +31,9 @@ static int load_mapper (int mapper)
 		break;
 	case 2: // UxROM
 		nes_uxrom_load (prg_rom_n_banks, prg_rom, chr_rom_n_banks, chr_rom);
+		break;
+	case 3: // CNROM
+		nes_cnrom_load (prg_rom_n_banks, prg_rom, chr_rom_n_banks, chr_rom);
 		break;
 	case 4: // MMC3
 		nes_mmc3_load (prg_rom_n_banks, prg_rom, chr_rom_n_banks, chr_rom);

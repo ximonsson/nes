@@ -1,6 +1,5 @@
 #include "nes/cpu.h"
 #include "nes/ppu.h"
-#include "nes/nes.h"
 #include <stdio.h>
 
 
@@ -174,7 +173,6 @@ void nes_mmc1_load (int _n_prg_banks, uint8_t* _prg, int _n_chr_banks, uint8_t* 
 
 	RESET_SR;
 	prg_bank = 0;
-	nes_prg_load_bank (-1, 1);
 	prg_banks[0] = prg_bank;
 	prg_banks[1] = n_prg_banks - 1;
 	chr_banks[0] = chr_banks[1] = 0;

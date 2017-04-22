@@ -7,7 +7,7 @@ SRC_DIR = src
 LIBS    = lib
 EXEC    = $(BIN)/nes
 
-SRC  = cpu.c io.c nes.c ppu.c apu.c mmc1.c uxrom.c mmc3.c mmc2.c
+SRC  = cpu.c io.c nes.c ppu.c apu.c mmc1.c uxrom.c mmc3.c mmc2.c cnrom.c
 OBJS = $(addprefix $(BUILD)/, $(SRC:.c=.o))
 LIB  = $(LIBS)/libnes.a
 
@@ -25,7 +25,7 @@ endif
 
 INCLUDES = -I./include
 
-LDFLAGS += -L./$(LIBS) -lSDL2 -lGLESv2 -lpthread -lnes -lpulse -lpulse-simple
+LDFLAGS += -L./$(LIBS) -lSDL2 -lGLESv2 -lnes -lpulse -lpulse-simple
 
 ARCMD = rcs
 

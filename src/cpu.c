@@ -4,7 +4,6 @@
 #include "nes/io.h"
 #include <stdio.h>
 #include <string.h>
-#include <pthread.h>
 
 
 #define MAX_EVENT_HANDLERS 16
@@ -858,6 +857,7 @@ static const instruction BPL = { "BPL", &bpl };
 // Force interrupt
 static void brk (addressing_mode mode)
 {
+	fprintf(stderr, "break?\n");
 	ps |= BREAK;
 	uint16_t irq_vector = memory[IRQ_VECTOR + 1];
 	irq_vector = irq_vector << 8 | memory[IRQ_VECTOR];
