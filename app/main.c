@@ -1,13 +1,12 @@
-/** ------------------------------------------------------------------------------------------------------- *
+/** -----------------------------------------------------------------------------------------------
  *  File: main.c
  *  Description: Test application to run the nes emulator. Runs with OpenGL ES.
- *  ------------------------------------------------------------------------------------------------------- */
+ *  ----------------------------------------------------------------------------------------------- */
 #include "nes.h"
 #include <stdio.h>
-#include <pthread.h>
-#include <SDL2/SDL.h>
 #include <unistd.h>
 #include <string.h>
+#include <SDL2/SDL.h>
 #include <GLES2/gl2.h>
 #include <pulse/simple.h>
 #include <pulse/error.h>
@@ -246,7 +245,7 @@ static void audio_init (int rate)
 	audio_samples_buffer = malloc (rate * sizeof (float));
 
 	int error;
-	audioconn = pa_simple_new (NULL, "NES", PA_STREAM_PLAYBACK, NULL, "Audio", &ss, NULL, NULL, &error);
+	audioconn = pa_simple_new (NULL, "NES", PA_STREAM_PLAYBACK, NULL, "NES", &ss, NULL, NULL, &error);
 	if (!audioconn)
 	{
 		fprintf (stderr, "error pa_simple_new: %s\n", pa_strerror (error));
@@ -272,6 +271,7 @@ static void audio_quit ()
 	if (pa_simple_flush (audioconn, &err) < 0)
 		fprintf (stderr, "pa_simple_flush: %s\n", pa_strerror (err));
 	pa_simple_free (audioconn);
+	free (audio_samples_buffer);
 }
 
 // if the game is running
@@ -346,6 +346,7 @@ int main (int argc, char** argv)
 	// init
 	init_screen (256 * 2.5, 240 * 2.5);
 	init_opengl ();
+
 	audio_init (SAMPLE_RATE);
 	nes_audio_set_sample_rate (SAMPLE_RATE);
 
