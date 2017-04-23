@@ -163,7 +163,7 @@ void nes_mmc1_load (int _n_prg_banks, uint8_t* _prg, int _n_chr_banks, uint8_t* 
 	chr = _chr;
 	prg = _prg;
 	n_prg_banks = _n_prg_banks;
-	n_chr_banks = _n_chr_banks;
+	n_chr_banks = _n_chr_banks << 1;
 
 	nes_cpu_add_store_handler (&write_prg_rom);
 	nes_cpu_add_read_handler (&read_prg_rom);
