@@ -20,28 +20,35 @@ static uint8_t* chr_rom = 0;
 /* battery_backed flags if the cartridge contains battery packed SRAM */
 static int battery_backed = 0;
 
+static void load_nrom ()
+{
+	// load PRG ROM data to memory
+	if (prg_rom_n_banks == 1)
+	{
+		// if data is smaller than one bank we mirror the memory down.
+		nes_cpu_load_prg_rom_bank (prg_rom, 0);
+		nes_cpu_load_prg_rom_bank (prg_rom, 1);
+	}
+	else
+		nes_cpu_load_prg_rom (prg_rom);
+	// load it to VRAM in PPU
+	nes_ppu_load_chr_rom (chr_rom);
+}
+
 static int load_mapper (int mapper)
 {
 	switch (mapper)
 	{
 	case 0: // NROM
-		// load PRG ROM data to memory
-		if (prg_rom_n_banks == 1)
-		{
-			// if data is smaller than one bank we mirror the memory down.
-			nes_cpu_load_prg_rom_bank (prg_rom, 0);
-			nes_cpu_load_prg_rom_bank (prg_rom, 1);
-		}
-		else
-			nes_cpu_load_prg_rom (prg_rom);
-		// load it to VRAM in PPU
-		nes_ppu_load_chr_rom (chr_rom);
+		load_nrom ();
 		break;
 	case 1: // MMC1
 		nes_mmc1_load (prg_rom_n_banks, prg_rom, chr_rom_n_banks, chr_rom);
 		break;
 	case 2: // UxROM
 		nes_uxrom_load (prg_rom_n_banks, prg_rom, chr_rom_n_banks, chr_rom);
+		// UxROM doesn't handle CHR so load it to VRAM in PPU
+		nes_ppu_load_chr_rom (chr_rom);
 		break;
 	case 3: // CNROM
 		nes_cnrom_load (prg_rom_n_banks, prg_rom, chr_rom_n_banks, chr_rom);
