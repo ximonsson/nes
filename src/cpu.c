@@ -312,14 +312,12 @@ uint8_t nes_cpu_read_ram (uint16_t address)
 /* Zero Page - $00 */
 static uint16_t zero_page ()
 {
-	//return memory[pc];
 	return MEM (pc);
 }
 
 /* Zero Page,X - $10,X */
 static uint16_t zero_page_x ()
 {
-	//uint8_t ret = memory[pc] + x;
 	uint8_t ret = MEM (pc) + x;
 	return ret;
 }
@@ -327,7 +325,6 @@ static uint16_t zero_page_x ()
 /* Zero Page,Y - $10,Y */
 static uint16_t zero_page_y ()
 {
-	//uint8_t ret = memory[pc] + y;
 	uint8_t ret = MEM (pc) + y;
 	return ret;
 }
@@ -335,8 +332,6 @@ static uint16_t zero_page_y ()
 /* Absolute - $1234 */
 static uint16_t absolute ()
 {
-	//uint16_t addr = memory[pc + 1];
-	//addr = (addr << 8) | memory[pc];
 	uint16_t addr = MEM (pc + 1);
 	addr = (addr << 8) | MEM (pc);
 	return addr;
@@ -363,8 +358,6 @@ static uint16_t absolute_y ()
 /* Indirect - ($FFFC) */
 static uint16_t indirect ()
 {
-	//uint8_t l = memory[pc];
-	//uint16_t h = memory[pc + 1];
 	uint8_t l = MEM (pc);
 	uint16_t h = MEM (pc + 1);
 	h <<= 8;
@@ -373,8 +366,6 @@ static uint16_t indirect ()
 	l ++;
 	uint16_t high = h | l;
 
-	//uint16_t addr = memory[high];
-	//addr = (addr << 8) | memory[low];
 	uint16_t addr = MEM (high);
 	addr = (addr << 8) | MEM (low);
 
@@ -384,11 +375,8 @@ static uint16_t indirect ()
 /* Indexed Indirect - $(40,X) */
 static uint16_t indexed_indirect ()
 {
-	//uint8_t l = memory[pc] + x;
 	uint8_t l = MEM (pc) + x;
 	uint8_t h = l + 1;
-	//uint16_t addr = memory[h];
-	//addr = (addr << 8) | memory[l];
 	uint16_t addr = MEM (h);
 	addr = (addr << 8) | MEM (l);
 	return addr;
@@ -397,12 +385,9 @@ static uint16_t indexed_indirect ()
 /* Indirect Indexed - ($40),Y */
 static uint16_t indirect_indexed ()
 {
-	//uint8_t l = memory[pc];
 	uint8_t l = MEM (pc);
 	uint8_t h = l + 1;
 
-	//uint16_t addr = memory[h];
-	//addr = ((addr << 8) | memory[l]) + y;
 	uint16_t addr = MEM (h);
 	addr = ((addr << 8) | MEM (l)) + y;
 
@@ -455,59 +440,59 @@ static void accumulator_string (char *s)
 
 static void zero_page_string (char *s)
 {
-	sprintf (s, "$%.2X = %.2X", memory[pc], memory[zero_page()]);
+	sprintf (s, "$%.2X = %.2X", MEM(pc), MEM(zero_page()));
 }
 
 static void zero_page_x_string (char *s)
 {
-	sprintf (s, "$%.2X,X = %.2X", memory[pc], memory[zero_page_x()]);
+	sprintf (s, "$%.2X,X = %.2X", MEM(pc), MEM(zero_page_x()));
 }
 
 static void zero_page_y_string (char *s)
 {
-	sprintf (s, "$%.2X,Y = %.2X", memory[pc], memory[zero_page_y()]);
+	sprintf (s, "$%.2X,Y = %.2X", MEM(pc), MEM(zero_page_y()));
 }
 
 static void absolute_string (char *s)
 {
 	uint16_t m = absolute();
-	sprintf (s, "$%.4X = %.2X", m, memory[m]);
+	sprintf (s, "$%.4X = %.2X", m, MEM(m));
 }
 
 static void absolute_x_string (char *s)
 {
 	uint16_t m = absolute_x();
-	sprintf (s, "$%.4X,X = %.2X", m, memory[m]);
+	sprintf (s, "$%.4X,X = %.2X", m, MEM(m));
 }
 
 static void absolute_y_string (char *s)
 {
 	uint16_t m = absolute_y();
-	sprintf (s, "$%.4X,Y = %.2X", m, memory[m]);
+	sprintf (s, "$%.4X,Y = %.2X", m, MEM(m));
 }
 
 static void indirect_string (char *s)
 {
-	uint16_t m = memory[pc], n = memory[pc + 1];
+	uint16_t m = MEM(pc), n = MEM(pc + 1);
 	m = (n << 8) | m;
 	sprintf (s, "($%.4X) = %.4X", m, indirect());
 }
 
 static void indexed_indirect_string (char *s)
 {
-	uint8_t  m = memory[pc];
+	uint8_t  m = MEM(pc);
 	uint16_t a = indexed_indirect();
-	sprintf (s, "($%.2X,X) @ %.2X = %.4X = %.2X", m, m + x, a, memory[a]);
+	sprintf (s, "($%.2X,X) @ %.2X = %.4X = %.2X", m, m + x, a, MEM(a));
 }
 
 static void indirect_indexed_string (char *s)
 {
-	sprintf (s, "($%.2X),Y", memory[pc]);
+	sprintf (s, "($%.2X),Y", MEM(pc));
 }
 
 static void immediate_string (char *s)
 {
-	sprintf (s, "#%.2X", memory[pc]);
+	sprintf (s, "#%.2X", MEM(pc));
 }
 
 static void implicit_string (char *s)
@@ -616,8 +601,6 @@ void nes_cpu_reset ()
 	stalled = 0;
 
 	// load program counter
-	//pc = memory[RST_VECTOR + 1];
-	//pc = pc << 8 | memory[RST_VECTOR];
 	pc = MEM (RST_VECTOR + 1);
 	pc = pc << 8 | MEM (RST_VECTOR);
 
@@ -656,8 +639,6 @@ static inline void interrupt (uint16_t _pc)
 /* nmi generates an interrupt and loads the NMI vector. */
 static void nmi ()
 {
-	//uint16_t nmi_vector = memory[NMI_VECTOR + 1];
-	//nmi_vector = (nmi_vector << 8) | memory[NMI_VECTOR];
 	uint16_t nmi_vector = MEM (NMI_VECTOR + 1);
 	nmi_vector = (nmi_vector << 8) | MEM (NMI_VECTOR);
 	interrupt (nmi_vector);
@@ -670,8 +651,6 @@ static void irq ()
 {
 	if (~ps & INTERRUPT)
 	{
-		//uint16_t irq_vector = memory[IRQ_VECTOR + 1];
-		//irq_vector = (irq_vector << 8) | memory[IRQ_VECTOR];
 		uint16_t irq_vector = MEM (IRQ_VECTOR + 1);
 		irq_vector = (irq_vector << 8) | MEM (IRQ_VECTOR);
 		interrupt (irq_vector);
@@ -743,7 +722,7 @@ static void asl (addressing_mode mode) {
 	if (mode == ACCUMULATOR)
 		v = a;
 	else
-		v = mem_read (adr);
+		v = MEM (adr);
 
 	ps &= ~CARRY;
 	// set carry flag to bit 7 of value (indicates overflow)
@@ -857,7 +836,6 @@ static const instruction BPL = { "BPL", &bpl };
 // Force interrupt
 static void brk (addressing_mode mode)
 {
-	fprintf(stderr, "break?\n");
 	ps |= BREAK;
 	uint16_t irq_vector = memory[IRQ_VECTOR + 1];
 	irq_vector = irq_vector << 8 | memory[IRQ_VECTOR];

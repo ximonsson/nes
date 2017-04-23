@@ -5,7 +5,7 @@
 
 #define CHR_BANK_SIZE 0x1000
 #define N_CHR_BANKS 2
-static int chr_banks[N_CHR_BANKS][2];
+//static int chr_banks[N_CHR_BANKS][2];
 static int n_chr_banks;
 static uint8_t* chr;
 
@@ -56,16 +56,13 @@ static void prg_write (uint16_t address, uint8_t v)
 }
 
 #define PRG_ROM_BANK_SIZE 0x2000
-//#define PRG(address) prg + prg_banks[address / PRG_ROM_BANK_SIZE] * PRG_ROM_BANK_SIZE + address % PRG_ROM_BANK_SIZE
+#define PRG(address) prg + prg_banks[address / PRG_ROM_BANK_SIZE] * PRG_ROM_BANK_SIZE + address % PRG_ROM_BANK_SIZE
 static int prg_read (uint16_t address, uint8_t* v)
 {
 	if (address >= 0x8000)
 	{
 		address &= 0x7FFF;
-		int bank = address / PRG_ROM_BANK_SIZE;
-		int offset = address % PRG_ROM_BANK_SIZE;
-		*v = prg[prg_banks[bank] * PRG_ROM_BANK_SIZE + offset];
-		//*v = *(PRG (address));
+		*v = *(PRG (address));
 		return 1;
 	}
 	return 0;

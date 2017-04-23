@@ -25,6 +25,17 @@ static int load_mapper (int mapper)
 	switch (mapper)
 	{
 	case 0: // NROM
+		// load PRG ROM data to memory
+		if (prg_rom_n_banks == 1)
+		{
+			// if data is smaller than one bank we mirror the memory down.
+			nes_cpu_load_prg_rom_bank (prg_rom, 0);
+			nes_cpu_load_prg_rom_bank (prg_rom, 1);
+		}
+		else
+			nes_cpu_load_prg_rom (prg_rom);
+		// load it to VRAM in PPU
+		nes_ppu_load_chr_rom (chr_rom);
 		break;
 	case 1: // MMC1
 		nes_mmc1_load (prg_rom_n_banks, prg_rom, chr_rom_n_banks, chr_rom);
@@ -106,42 +117,15 @@ static int load_ines (FILE *fp)
 	if (trainer_size)
 		fseek (fp, trainer_size, SEEK_CUR);
 
-	// PPU mirroring --------------------------------------------------
-	int mirroring = NES_PPU_MIRROR_HORIZONTAL;
-	switch (header[6] & 0x9)
-	{
-	case 0: // horizontal mirroring
-		mirroring = NES_PPU_MIRROR_HORIZONTAL;
-		break;
-	case 1: // vertical mirroring
-		mirroring = NES_PPU_MIRROR_VERTICAL;
-		break;
-	case 8: // four screen mirroring
-	case 9:
-		mirroring = NES_PPU_MIRROR_FOUR_SCREEN;
-		break;
-	}
-	nes_ppu_set_mirroring (mirroring);
-
 	// read PRG ROM --------------------------------------------------
 	prg_rom_n_banks = header[4];
 	int prg_rom_size = prg_rom_n_banks * 16 << 10;
 	prg_rom = calloc (prg_rom_size, 1);
-
 	if ((ret = fread (prg_rom, 1, prg_rom_size, fp)) != prg_rom_size)
 	{
 		fprintf (stderr, "did not get all bytes for PRG ROM\n");
 		return 1;
 	}
-	// load PRG ROM data to memory
-	if (prg_rom_size <= NES_PRG_ROM_BANK_SIZE)
-	{
-		// if data is smaller than one bank we mirror the memory down.
-		nes_cpu_load_prg_rom_bank (prg_rom, 0);
-		nes_cpu_load_prg_rom_bank (prg_rom, 1);
-	}
-	else
-		nes_cpu_load_prg_rom (prg_rom);
 
 	// cartridge contains battery backed PRG RAM
 	battery_backed = (header[6] & 2) == 2;
@@ -164,8 +148,21 @@ static int load_ines (FILE *fp)
 			return 1;
 		}
 	}
-	// load it to VRAM in PPU
-	nes_ppu_load_chr_rom (chr_rom);
+
+	// PPU mirroring --------------------------------------------------
+	switch (header[6] & 0x9)
+	{
+	case 0: // horizontal mirroring
+		nes_ppu_set_mirroring (NES_PPU_MIRROR_HORIZONTAL);
+		break;
+	case 1: // vertical mirroring
+		nes_ppu_set_mirroring (NES_PPU_MIRROR_VERTICAL);
+		break;
+	case 8: // four screen mirroring
+	case 9:
+		nes_ppu_set_mirroring (NES_PPU_MIRROR_FOUR_SCREEN);
+		break;
+	}
 
 	// Mapper ---------------------------------------------------------
 	int mapper = (header[6] & 0xF0) >> 4 | (header[7] & 0xF0);
