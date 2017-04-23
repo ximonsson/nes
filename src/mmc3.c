@@ -41,17 +41,17 @@ static void update_prg_banks ()
 }
 
 #define PRG_ROM_BANK_SIZE 0x2000
-#define PRG(address) prg + prg_banks[address / PRG_ROM_BANK_SIZE] * PRG_ROM_BANK_SIZE + address % PRG_ROM_BANK_SIZE
 
 static int prg_read (uint16_t address, uint8_t* v)
 {
 	if (address >= 0x8000)
 	{
-		//*v = *(PRG ((address & 0x7FFF)));
 		address &= 0x7FFF;
-		int bank = address / PRG_ROM_BANK_SIZE;
-		int offset = address % PRG_ROM_BANK_SIZE;
-		*v = prg[prg_banks[bank] * PRG_ROM_BANK_SIZE + offset];
+		*v = prg[
+			prg_banks[address / PRG_ROM_BANK_SIZE] // bank index
+				* PRG_ROM_BANK_SIZE
+			 + address % PRG_ROM_BANK_SIZE // offset
+		];
 		return 1;
 	}
 	return 0;
@@ -105,7 +105,12 @@ static void write_bank_data (uint8_t v)
 	mmc3_bank_data = v;
 	// update register
 	uint8_t reg = mmc3_bank_select & 7;
-	mmc3_registers[reg] = v;
+	if (reg == 7 || reg == 6)
+		// some games write a too large bank index to the register...
+		// we need to therefor make sure it wraps
+		// http://forums.nesdev.com/viewtopic.php?f=3&t=13569&p=160076&hilit=mmc3+prg#p160076
+		v &= n_prg_banks - 1;
+	REG(reg) = v;
 }
 
 static void prg_write (uint16_t address, uint8_t value)
@@ -149,7 +154,7 @@ static void prg_write (uint16_t address, uint8_t value)
 		   mmc3_irq_disable = 1; // disable IRQ
 		   else // odd
 		   mmc3_irq_disable = 0; // enable IRQ
-		   */
+	    */
 	}
 }
 
@@ -183,7 +188,7 @@ void nes_mmc3_load (int n_prg_banks_, uint8_t* prg_, int n_chr_banks_, uint8_t* 
 	prg = prg_;
 	chr = chr_;
 	n_prg_banks = n_prg_banks_ << 1; // n banks passed are in 16KB but the mapper treats them as 8KB
-	n_chr_banks = n_chr_banks_ << 1; // same as with PRG
+	n_chr_banks = n_chr_banks_ << 3; // n chr banks passed are in 8KB but the mapper divides into 1KB banks.
 
 	mmc3_bank_select     = 0;
 	mmc3_bank_data       = 0;
@@ -192,6 +197,8 @@ void nes_mmc3_load (int n_prg_banks_, uint8_t* prg_, int n_chr_banks_, uint8_t* 
 	mmc3_irq_latch       = 0;
 	mmc3_irq_disable     = 0;
 	mmc3_counter         = 0;
+
+	memset (mmc3_registers, 0, 8 * sizeof (uint8_t));
 
 	prg_banks[0] = 0;
 	prg_banks[1] = 1;
