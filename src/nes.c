@@ -259,13 +259,13 @@ void nes_step_frame ()
 }
 
 
-void nes_press_button (unsigned int player, enum controller_keys key)
+void nes_press_button (unsigned int player, nes_controller_key key)
 {
 	nes_io_press_key (player, key);
 }
 
 
-void nes_release_button (unsigned int player, enum controller_keys key)
+void nes_release_button (unsigned int player, nes_controller_key key)
 {
 	nes_io_release_key (player, key);
 }

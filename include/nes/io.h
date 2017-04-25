@@ -21,12 +21,12 @@ enum nes_io_controller_port
 /**
  * Register key press event for a player.
  */
-void nes_io_press_key (enum nes_io_controller_port port, nes_controller_keys key) ;
+void nes_io_press_key (enum nes_io_controller_port port, nes_controller_key key) ;
 
 /**
  *  Register key release event for a player.
  */
-void nes_io_release_key (enum nes_io_controller_port port, nes_controller_keys key) ;
+void nes_io_release_key (enum nes_io_controller_port port, nes_controller_key key) ;
 
 /**
  *  Get the controller state of the selected port.

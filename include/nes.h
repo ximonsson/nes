@@ -13,7 +13,7 @@
 /**
  *  Keys on the NES controller.
  */
-typedef enum controller_keys
+typedef enum nes_controller_keys
 {
 	nes_button_a       = 0x01,
 	nes_button_b       = 0x02,
@@ -24,7 +24,7 @@ typedef enum controller_keys
 	nes_button_left    = 0x40,
 	nes_button_right   = 0x80
 }
-nes_controller_keys;
+nes_controller_key;
 
 /**
  * nes_start resets the hardware components and loads the game @ filepath
@@ -46,12 +46,12 @@ void nes_stop () ;
 /**
  *  Register press event to player's controller.
  */
-void nes_press_button (unsigned int player, nes_controller_keys key) ;
+void nes_press_button (unsigned int player, nes_controller_key key) ;
 
 /**
  *  Register release event to player's controller.
  */
-void nes_release_button (unsigned int player, nes_controller_keys key) ;
+void nes_release_button (unsigned int player, nes_controller_key key) ;
 
 /**
  *  Save the current game as name.

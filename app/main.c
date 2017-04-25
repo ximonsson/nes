@@ -281,7 +281,7 @@ static int running = 0;
 static void handle_events ()
 {
 	SDL_Event event;
-	void (*key_func) (unsigned int, nes_controller_keys);
+	void (*key_func) (unsigned int, nes_controller_key);
 
 	while (SDL_PollEvent (&event))
 	{

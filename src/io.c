@@ -21,13 +21,13 @@ void print_controller_state (enum nes_io_controller_port port)
 }
 
 
-void nes_io_press_key (enum nes_io_controller_port port, enum controller_keys key)
+void nes_io_press_key (enum nes_io_controller_port port, nes_controller_key key)
 {
 	controller_states[port] |= key;
 }
 
 
-void nes_io_release_key (enum nes_io_controller_port port, enum controller_keys key)
+void nes_io_release_key (enum nes_io_controller_port port, nes_controller_key key)
 {
 	controller_states[port] &= ~key;
 }
