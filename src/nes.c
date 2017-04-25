@@ -206,6 +206,16 @@ end:
 	return ret;
 }
 
+/*
+ * cpu_step_callback points to a callback to be called each time we step the CPU.
+ * it defaults to NULL
+ */
+static void (*cpu_step_callback)() = NULL;
+
+void nes_step_callback (void (*cb) ())
+{
+	cpu_step_callback = cb;
+}
 
 void nes_stop ()
 {
@@ -213,6 +223,7 @@ void nes_stop ()
 	free (prg_rom);
 	free (chr_rom);
 	prg_rom = 0;
+	cpu_step_callback = NULL;
 }
 
 // keep track of PPU cycles to know when a frame is done
@@ -252,6 +263,9 @@ void nes_step_frame ()
 			nes_apu_step ();
 
 		ppucc += cc * 3;
+
+		if (cpu_step_callback != NULL)
+			cpu_step_callback();
 
 		// TODO emulate Hz
 	}

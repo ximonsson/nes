@@ -1,5 +1,6 @@
 #include "nes/cpu.h"
 #include "nes/ppu.h"
+#include "nes/nes.h"
 #include <string.h>
 
 /* Registers */
@@ -10,18 +11,30 @@ static uint8_t mmc3_prg_ram_protect;
 static uint8_t mmc3_irq_latch;
 static uint8_t mmc3_irq_disable;
 
+/* MMC3 bank registers for switching PRG and CHR banks. */
 static uint8_t mmc3_registers[8];
 #define REG(r) mmc3_registers[r]
 
+/* IRQ counter */
 static uint8_t mmc3_counter = 0;
 
-static uint8_t* prg;
-static uint8_t* chr;
+/**
+ * PRG
+ */
 
 #define N_PRG_BANKS 4
+#define PRG_ROM_BANK_SIZE 0x2000
+
+/* PRG ROM data */
+static uint8_t* prg;
+
+/* Number of PRG ROM banks (= len(PRG) / PRG_ROM_BANK_SIZE) */
 static int n_prg_banks;
+
+/* Offsets to currently loaded banks in PRG memory space ($8000 - $FFFF) */
 static int prg_banks[N_PRG_BANKS];
 
+/* update_prg_banks updates the offsets pointing to the correct banks for when reading. */
 static void update_prg_banks ()
 {
 	if (mmc3_bank_select & 0x40)
@@ -40,8 +53,7 @@ static void update_prg_banks ()
 	}
 }
 
-#define PRG_ROM_BANK_SIZE 0x2000
-
+/* prg_read reads from the correct bank within PRG ROM */
 static int prg_read (uint16_t address, uint8_t* v)
 {
 	if (address >= 0x8000)
@@ -57,10 +69,22 @@ static int prg_read (uint16_t address, uint8_t* v)
 	return 0;
 }
 
+/**
+ * CHR
+ */
 #define N_CHR_BANKS 8
+#define CHR_BANK_SIZE 0x0400
+
+/* CHR ROM data */
+static uint8_t* chr;
+
+/* Number of CHR ROM banks in total (= len(CHR) / CHR_ROM_BANK_SIZE) */
 static int n_chr_banks;
+
+/* Offsets pointing to correct bank when reading from CHR */
 static int chr_banks[N_CHR_BANKS];
 
+/* update_chr_banks updates offset depending on current status of registers */
 static void update_chr_banks ()
 {
 	if (mmc3_bank_select & 0x80)
@@ -87,7 +111,6 @@ static void update_chr_banks ()
 	}
 }
 
-#define CHR_BANK_SIZE 0x0400
 #define CHR(adr) chr + chr_banks[adr / CHR_BANK_SIZE] * CHR_BANK_SIZE + adr % CHR_BANK_SIZE
 
 uint8_t chr_read (uint16_t address)
@@ -100,6 +123,7 @@ void chr_write (uint16_t address, uint8_t v)
 	*(CHR (address)) = v;
 }
 
+/* write_bank_data writes to the MMC Bank Data register */
 static void write_bank_data (uint8_t v)
 {
 	mmc3_bank_data = v;
@@ -113,6 +137,11 @@ static void write_bank_data (uint8_t v)
 	REG(reg) = v;
 }
 
+/*
+ * prg_write handles writes towards PRG ROM memory space ($8000 - $FFFF), and updates the registers
+ * accordingly.
+ * This function is registered as a RAM store handler.
+ */
 static void prg_write (uint16_t address, uint8_t value)
 {
 	int even = (address & 1) == 0;
@@ -169,13 +198,14 @@ static int write (uint16_t address, uint8_t value)
 	return 0;
 }
 
-
-void nes_mmc3_step ()
+/* nes_mmc3_step steps the MMC3 counter and signals an IRQ when counter is zero */
+static void step ()
 {
-	if (mmc3_counter == 0)
+	if (mmc3_counter == 0) // reload IRQ
 		mmc3_counter = mmc3_irq_latch;
 	else
 	{
+		// decrement counter and trigger IRQ if counter == 0 and not disabled
 		mmc3_counter --;
 		if (mmc3_counter == 0 && !mmc3_irq_disable)
 			nes_cpu_signal (IRQ);
@@ -212,4 +242,5 @@ void nes_mmc3_load (int n_prg_banks_, uint8_t* prg_, int n_chr_banks_, uint8_t* 
 
 	nes_ppu_set_chr_writer (chr_write);
 	nes_ppu_set_chr_read (chr_read);
+	nes_step_callback (step);
 }
