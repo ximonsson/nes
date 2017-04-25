@@ -23,12 +23,18 @@ static int n_chr_banks;
  *  Reload CHR Banks.
  */
 static int chr_banks[2];
+static int chr0, chr1;
 static inline void switch_chr_bank ()
 {
 	if ((mmc1_ctrl & 0x10) != 0x10) // 8KB mode
 	{
-		chr_banks[0] &= 0x1E;
-		chr_banks[1] = chr_banks[0] | 1;
+		chr_banks[0] = chr0 & 0x1E;
+		chr_banks[1] = chr0 | 1;
+	}
+	else
+	{
+		chr_banks[0] = chr0;
+		chr_banks[1] = chr1;
 	}
 }
 
@@ -138,11 +144,13 @@ static int write_prg_rom (uint16_t addr, uint8_t v)
 					write_control (mmc1_sr);
 					break;
 				case 1: // CHR Bank 0 $A000-$BFFF
-					chr_banks[0] = mmc1_sr & 0x1F;
+					chr0 = mmc1_sr & 0x1F;
+					chr0 &= n_chr_banks - 1;
 					switch_chr_bank();
 					break;
 				case 2: // CHR Bank 1 $C000-$DFFF
-					chr_banks[1] = mmc1_sr & 0x1F;
+					chr1 = mmc1_sr & 0x1F;
+					chr1 &= n_chr_banks - 1;
 					switch_chr_bank();
 					break;
 				case 3: // PRG Bank $E000-$FFFF
