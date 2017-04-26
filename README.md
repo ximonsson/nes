@@ -13,7 +13,6 @@ To install the test application `libsdl2`, `libpulse` and `libgl` are needed.
 ## Installation
 
 `make` to create lib and test application.
-
 `make lib` to just create the library.
 
 ## TODO
@@ -28,13 +27,12 @@ To install the test application `libsdl2`, `libpulse` and `libgl` are needed.
 	* *Mega Man II* vertical scrolling between levels vs Quickman is horrible.
 	* *Teenage Mutant Ninja Turtles* sprite visible during welcome screen.
 	* *Zelda* transition from welcome screen is not smooth as in other emulators.
+	* There is a problem with BG/sprite priorities in SMB3
 
 ### Future Development
 
-* reading PRG should be handled by mappers
-* reading CHR should be handled by mappers
 * more mapper support
 * battery support (SRAM)
-* saving/loading games (outside battery support)
-* make sure you can load a new game without exiting binary
-* code always needs to be cleaned up somewhere
+* saving/loading game states
+* make sure you can load a new game without exiting binary (needs better reset support)
+* code always needs to be cleaned up somewhere (for example, I should really use better variable names for the PPU implementation)

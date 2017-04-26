@@ -2,6 +2,7 @@
 #include "nes/ppu.h"
 #include "nes/nes.h"
 #include <string.h>
+#include <stdio.h>
 
 /* Registers */
 static uint8_t mmc3_bank_select;
@@ -151,14 +152,13 @@ static void prg_write (uint16_t address, uint8_t value)
 			mmc3_bank_select = value;
 		else // odd
 			write_bank_data (value);
-
 		// update banks
 		update_prg_banks();
 		update_chr_banks();
 	}
 	else if (address < 0xC000) // $A000 - $BFFF
 	{
-		if (even) // even
+		if (even) // even - set PPU mirroring mode
 		{
 			if (value & 1)
 				nes_ppu_set_mirroring (NES_PPU_MIRROR_HORIZONTAL);
@@ -172,8 +172,11 @@ static void prg_write (uint16_t address, uint8_t value)
 	{
 		if (even) // even
 			mmc3_irq_latch = value;
-		else // odd
-			mmc3_counter = 0; // reload IRQ
+		else // odd - reload IRQ counter
+		{
+			// printf ("MMC3: reloading when counter = %d\n", mmc3_counter);
+			mmc3_counter = 0;
+		}
 	}
 	else // $E000 - $FFFF
 	{
@@ -198,14 +201,32 @@ static int write (uint16_t address, uint8_t value)
 	return 0;
 }
 
+static uint8_t ppu_a12 = 1;
 /* nes_mmc3_step steps the MMC3 counter and signals an IRQ when counter is zero */
 static void step ()
 {
+	// check loop V
+	uint16_t v = nes_ppu_loopy_v ();
+	uint8_t a12 = (v >> 12) & 1;
+
+	// TODO this is not correct but it makes games playable
+	// Another solution really needs to be found though, because ther are a lot of glitches
+	// in all games
+	if (a12 != ppu_a12) // change in PPU A12 ?
+	{
+		ppu_a12 = a12;
+		// if (a12 == 0) // A12 is low, we are only interrested in 0 -> 1 events
+			// return;
+	}
+	else
+		return;
+
 	if (mmc3_counter == 0) // reload IRQ
 		mmc3_counter = mmc3_irq_latch;
 	else
 	{
 		// decrement counter and trigger IRQ if counter == 0 and not disabled
+		// printf ("MMC3: step counter (%d, IRQ disabled: %d)\n", mmc3_counter, mmc3_irq_disable);
 		mmc3_counter --;
 		if (mmc3_counter == 0 && !mmc3_irq_disable)
 			nes_cpu_signal (IRQ);

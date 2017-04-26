@@ -132,4 +132,9 @@ typedef void (*nes_ppu_chr_writer) (uint16_t /* address */, uint8_t /* value */)
  */
 void nes_ppu_set_chr_writer (nes_ppu_chr_writer /* writer */) ;
 
+/**
+ * nes_ppu_loopy_v returns the value of loopy V register.
+ */
+uint16_t nes_ppu_loopy_v () ;
+
 #endif

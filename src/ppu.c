@@ -64,6 +64,8 @@ static uint16_t  t;
 static uint16_t  v;
 static uint8_t   x;
 
+uint16_t nes_ppu_loopy_v () { return v; }
+
 /* PPU clock cycles */
 static int ppucc;
 
@@ -345,18 +347,17 @@ static void write_ppudata (uint8_t value)
 	if (v >= PALETTE_RAM) // palettes
 	{
 		// make sure to mirror
-		uint16_t delta = v % 4 == 0 ? 0x10 : 0x20;
+		uint16_t delta = (v & 3) == 0 ? 0x10 : 0x20;
 		for (int i = PALETTE_RAM + v % delta; i < VRAM_SIZE; i += delta)
 			vram[i] = value;
 	}
 	else if (v >= NAMETABLE_0) // nametables
 	{
-		// read mirrored address
+		// write to mirrored address
 		vram[mirror_address (v)] = value;
 	}
-	else // patterns (no mirroring)
+	else // patterns/CHR (no mirroring)
 	{
-		//vram[v] = value;
 		write_chr (v, value);
 	}
 
@@ -432,7 +433,6 @@ static uint8_t read_ppudata ()
 	}
 	else // v < $2000: pattern read
 	{
-		//vram_buffer = vram[v];
 		vram_buffer = chr_read (v);
 	}
 	// increment and wrap
@@ -865,6 +865,8 @@ void nes_ppu_step ()
 			}
 			else if (dot == 257) // dot 257
 			{
+				// printf ("PPU: new scanline    ");
+				// print_scroll ();
 				// copy horizontal bits from t to v
 				v = (v & ~0x041F) | (t & 0x041F);
 				// clear sprite data from the last scanline
