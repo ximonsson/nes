@@ -3,7 +3,11 @@
 NES Emulator
 
 Even though still in development, a lot of games can be played. There are still some bugs to solve.
-Currently NROM, SxROM and UxROM games are supported.
+
+Currently supported mappers are:
+* NROM
+* SxROM
+* UxROM
 
 ## Depedencies
 
@@ -21,13 +25,13 @@ To install the test application `libsdl2`, `libpulse` and `libgl` are needed.
 
 * **Audio**
 	* Audio in all games get hacky after a while (~5min) Could be sampling rate?
-	* DMC does not seem to work correctly (few games seem to use it so it is unnoticeable, might be the reason for the high pitch noise in *Mega Man II*)
+	* DMC does not seem to work correctly (few games seem to use it so it is unnoticeable, might be the reason for the high pitch noise in *Mega Man II* and maybe some of the graphic glitches as the IRQ might not be fired correctly)
 
 * **Graphics**
 	* *Mega Man II* vertical scrolling between levels vs Quickman is horrible.
 	* *Teenage Mutant Ninja Turtles* sprite visible during welcome screen.
 	* *Zelda* transition from welcome screen is not smooth as in other emulators.
-	* There is a problem with BG/sprite priorities in SMB3
+	* There is a problem with BG/sprite priorities in *SMB3*
 
 ### Future Development
 
