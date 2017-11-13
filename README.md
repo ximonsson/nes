@@ -33,6 +33,9 @@ To install the test application `libsdl2`, `libpulse` and `libgl` are needed.
 	* *Zelda* transition from welcome screen is not smooth as in other emulators.
 	* There is a problem with BG/sprite priorities in *SMB3*
 
+* **Mappers**
+	* MMC3 - IRQ timeout is not right. Need to find a more correct way of detecting A12 low
+
 ### Future Development
 
 * more mapper support
