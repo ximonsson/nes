@@ -1,6 +1,6 @@
 
 BIN=bin/nes
-TESTDIR="test/tests/"
+TESTDIR="test/roms/"
 tests=($(find $TESTDIR -name "*.nes"))
 
 function print_tests {
