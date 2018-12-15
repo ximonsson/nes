@@ -668,9 +668,10 @@ static void inline set_pixel_color (int x, int y, uint8_t pindex)
  */
 static void inline render_pixel (int x, int y)
 {
-	uint8_t bg_color   = 0,
-	        sprite_clr = 0,
-	        bg_pixel   = 0;
+	uint8_t
+		bg_color   = 0,
+		sprite_clr = 0,
+		bg_pixel   = 0;
 
 	// default palette index to background clear color
 	uint8_t color = vram[0x3F00];
@@ -748,7 +749,7 @@ const uint8_t* nes_screen_buffer ()
 static void sprite_evaluation ()
 {
 	int scanln = ppucc / PPUCC_PER_SCANLINE;
- 	uint8_t* y = primary_oam;
+	uint8_t* y = primary_oam;
 	int i = 0;
 	int h = 8 + ((ppu_registers[PPUCTRL] & 0x20) >> 2);
 	int n = 0;
