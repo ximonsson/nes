@@ -117,7 +117,7 @@ static void pulse_init (struct pulse* ch, uint8_t* reg, uint8_t number)
 static uint16_t inline pulse_period (struct pulse* ch)
 {
 	uint16_t period = ch->reg[3] & 7;
-	         period = (period << 8) | ch->reg[2];
+	period = (period << 8) | ch->reg[2];
 	return period;
 }
 
@@ -332,7 +332,7 @@ static void triangle_reload_length_counter (struct triangle* tr, uint8_t v)
 static uint8_t triangle_sequence[32] =
 {
 	15, 14, 13, 12, 11, 10,  9,  8,  7,  6,  5,  4,  3,  2,  1,  0,
-	 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15
+	0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15
 };
 
 /* triangle_output will output the next value in the triangle channel's sequence */
@@ -869,14 +869,15 @@ static uint8_t status_read ()
 	uint8_t triangle_enabled = triangle.length_counter > 0;
 	uint8_t dmc_enabled      = dmc.reader.remaining    > 0;
 
-	uint8_t ret = 0                        |
-	              (registers[0x10] & 0x80) |
-	              (registers[0x17] & 0x40) |
-	              (dmc_enabled      << 4)  |
-	              (noise_enabled    << 3)  |
-	              (triangle_enabled << 2)  |
-	              (pulse_2_enabled  << 1)  |
-	              pulse_1_enabled;
+	uint8_t ret =
+		0                        |
+		(registers[0x10] & 0x80) |
+		(registers[0x17] & 0x40) |
+		(dmc_enabled      << 4)  |
+		(noise_enabled    << 3)  |
+		(triangle_enabled << 2)  |
+		(pulse_2_enabled  << 1)  |
+		pulse_1_enabled;
 
 	FRAMECOUNTER &= 0xD0; // clear frame interrupt flag
 	return ret;
@@ -892,7 +893,7 @@ uint8_t nes_apu_register_read (uint16_t address)
 {
 	reader r;
 	if ((r = *readers[address & 0x3FFF]) != NULL)
-		 return r ();
+		return r ();
 	return 0;
 }
 
@@ -912,7 +913,7 @@ void nes_apu_reset ()
 	apucc = 0; // reset clock cycles
 	frame = 0; // reset frame
 
- 	status_write (0); // silence all channels
+	status_write (0); // silence all channels
 }
 
 #define DEFAULT_SAMPLE_RATE 44100
@@ -1021,7 +1022,7 @@ static void render ()
 	// get value from mixer
 	float s = mix ();
 	// apply filtering
- 	s = high_pass_filter_pass (&filter_1, s);
+	s = high_pass_filter_pass (&filter_1, s);
 	s = high_pass_filter_pass (&filter_2, s);
 	s = low_pass_filter_pass (&filter_3, s);
 	*(samples + nsamples) = s;
