@@ -1480,8 +1480,6 @@ void print_operation (operation* op) {
 #endif
 
 
-#define PPU_CC_PER_CPU_CC 3
-
 int nes_cpu_step ()
 {
 	if (stalled)

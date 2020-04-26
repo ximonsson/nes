@@ -245,6 +245,8 @@ int nes_start (const char* file)
 }
 
 
+#define PPU_CC_PER_CPU_CC 3
+
 void nes_step_frame ()
 {
 	// number of CPU cycles run during one step
@@ -255,7 +257,7 @@ void nes_step_frame ()
 		cc = nes_cpu_step ();
 
 		// render on PPU
-		for (int i = 0; i < cc * 3; i ++)
+		for (int i = 0; i < cc * PPU_CC_PER_CPU_CC; i ++)
 			nes_ppu_step ();
 
 		// render audio
