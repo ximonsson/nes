@@ -25,7 +25,15 @@ endif
 
 INCLUDES = -I./include
 
-LDFLAGS += -L./$(LIBS) -lSDL2 -lGLESv2 -lnes -lpulse -lpulse-simple
+LDFLAGS += -L./$(LIBS) -lSDL2 -lnes -lpulse -lpulse-simple
+
+ifdef GLES
+LDFLAGS += -lGLESv2
+CFLAGS += -DGLES
+else
+LDFLAGS += -lGL
+CFLAGS += -DGL_GLEXT_PROTOTYPES
+endif
 
 ARCMD = rcs
 

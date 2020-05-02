@@ -6,11 +6,17 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
-#include <SDL2/SDL.h>
-#include <GLES2/gl2.h>
 #include <pulse/simple.h>
 #include <pulse/error.h>
 
+#ifdef GLES
+#include <GLES2/gl2.h>
+#else
+#include <GL/gl.h>
+#include <GL/glext.h>
+#endif
+
+#include <SDL2/SDL.h>
 
 #define VERTEX_SHADER_FILE "app/shaders/vertex.glsl"
 #define FRAGMENT_SHADER_FILE "app/shaders/fragment.glsl"
