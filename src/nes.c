@@ -264,7 +264,7 @@ void nes_step_frame ()
 		for (int i = 0; i < cc; i ++)
 			nes_apu_step ();
 
-		ppucc += cc * 3;
+		ppucc += cc * PPU_CC_PER_CPU_CC;
 
 		if (cpu_step_callback != NULL)
 			cpu_step_callback();

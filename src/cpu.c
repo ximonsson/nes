@@ -1498,7 +1498,6 @@ int nes_cpu_step ()
 	signals = 0;
 
 	// get operation
-	//uint8_t opcode = memory[pc];
 	uint8_t opcode = MEM (pc);
 	operation* op = &operations[opcode >> 4 & 0xF][opcode & 0xF];
 
