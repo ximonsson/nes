@@ -1,4 +1,4 @@
-#version 300 es
+#version 460
 
 in vec3 vertex;
 in vec2 texture_coords_in;
